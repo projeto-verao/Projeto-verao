@@ -20,6 +20,7 @@ export default function Profile() {
       navigate("/login");
     }
   }, [isAuthenticated, authLoading, navigate]);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
@@ -36,7 +37,7 @@ export default function Profile() {
     },
     onError: (err) => {
       console.error("Erro na análise corporal:", err);
-      toast.error("Não foi possível analisar a foto agora.");
+      toast.error("Erro ao analisar composição corporal.");
     },
   });
 
@@ -51,65 +52,36 @@ export default function Profile() {
     onError: () => toast.error("Erro ao fazer upload da foto."),
   });
 
-  const logout = trpc.auth.logout.useMutation({
-    onSuccess: () => { window.location.href = "/login"; },
-  });
+  const { logout } = useAuth();
 
   const handleLogout = async () => {
     try {
-      await logout.mutateAsync();
-      // Limpar cache
-      localStorage.clear();
-      sessionStorage.clear();
-      // Limpar cookies
-      document.cookie.split(";").forEach((c) => {
-        document.cookie = c
-          .replace(/^ +/, "")
-          .replace(/=.*/, `=;expires=${new Date().toUTCString()};path=/`);
-      });
-      // Redirecionar
-      setTimeout(() => {
-        window.location.href = "/login";
-      }, 500);
+      await logout();
     } catch (err) {
       console.error("Erro ao fazer logout:", err);
-      // Mesmo com erro, limpar e redirecionar
-      localStorage.clear();
-      sessionStorage.clear();
+      // Mesmo com erro, redirecionar
       window.location.href = "/login";
     }
   };
 
-  const handlePhotoSelect = (file: File) => {
+  const handlePhotoSelect = async (file: File) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       const img = new Image();
       img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 1024;
-        const MAX_HEIGHT = 1024;
-        let width = img.width;
-        let height = img.height;
-
-        if (width > height) {
-          if (width > MAX_WIDTH) {
-            height *= MAX_WIDTH / width;
-            width = MAX_WIDTH;
-          }
+        const canvas = document.createElement("canvas");
+        let w = img.width;
+        let h = img.height;
+        if (w > h) {
+          if (w > 512) { h = Math.round(h * 512 / w); w = 512; }
         } else {
-          if (height > MAX_HEIGHT) {
-            width *= MAX_HEIGHT / height;
-            height = MAX_HEIGHT;
-          }
+          if (h > 512) { w = Math.round(w * 512 / h); h = 512; }
         }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx?.drawImage(img, 0, 0, width, height);
-        
-        const resizedBase64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
-        uploadPhoto.mutate({ base64: resizedBase64 });
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext("2d")?.drawImage(img, 0, 0, w, h);
+        const base64 = canvas.toDataURL("image/jpeg", 0.85).split(",")[1];
+        uploadPhoto.mutate({ base64 });
       };
       img.src = e.target?.result as string;
     };
@@ -118,20 +90,8 @@ export default function Profile() {
 
   // Latest weight from body progress
   const latestWeight = bodyHistory?.[0]?.weightKg ?? profile?.weightKg;
-  const initialWeight = profile?.weightKg;
   const targetWeight = profile?.targetWeightKg;
-
-  // BMI calculation
-  const bmi = profile?.weightKg && profile?.heightCm
-    ? (profile.weightKg / Math.pow(profile.heightCm / 100, 2)).toFixed(1)
-    : null;
-
-  const bmiLabel = bmi
-    ? parseFloat(bmi) < 18.5 ? "Abaixo do peso"
-    : parseFloat(bmi) < 25 ? "Peso normal"
-    : parseFloat(bmi) < 30 ? "Sobrepeso"
-    : "Obesidade"
-    : null;
+  const initialWeight = bodyHistory?.[bodyHistory.length - 1]?.weightKg ?? profile?.weightKg;
 
   const completed = weekProgress?.completed ?? 0;
   const target = weekProgress?.target ?? 4;
@@ -140,209 +100,210 @@ export default function Profile() {
     <AppLayout>
       {/* Header */}
       <div className="page-header">
-        <h1 className="font-semibold text-gray-900 text-lg flex-1">Meu Perfil</h1>
-        <button
-          onClick={() => navigate("/trainer")}
-          className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center"
-          title="Configurações"
-        >
-          <Settings size={17} className="text-gray-600" />
-        </button>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Perfil</h1>
+          <p className="text-sm text-gray-500">Gerenciar sua conta e dados</p>
+        </div>
       </div>
 
-      <div className="px-5 py-4 space-y-5">
-        {/* Avatar + name */}
-        <div className="flex items-center gap-4">
-          <div className="relative">
-            <div
-              className="w-20 h-20 rounded-full bg-gray-100 overflow-hidden cursor-pointer border-2 border-gray-200"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              {profile?.photoUrl ? (
-                <img src={profile.photoUrl} alt="Foto" className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <User size={32} className="text-gray-400" />
-                </div>
-              )}
-            </div>
-            {(uploadPhoto.isPending || saveProfile.isPending || analyzeBody.isPending) && (
-              <div className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center">
-                <Loader2 size={18} color="white" className="animate-spin" />
+      <div className="px-5 pb-20 space-y-6">
+        {/* User Info Card */}
+        <div className="app-card bg-gradient-to-br from-black to-gray-900 text-white">
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center">
+                <User size={32} />
               </div>
+              <div>
+                <p className="font-semibold text-lg">{user?.name || "Usuário"}</p>
+                <p className="text-sm text-white/60">{user?.email}</p>
+              </div>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="p-2 hover:bg-white/10 rounded-lg transition"
+            >
+              <LogOut size={20} />
+            </button>
+          </div>
+        </div>
+
+        {/* Photo Section */}
+        <div className="app-card space-y-4">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center">
+              <Camera size={16} color="white" />
+            </div>
+            <h2 className="font-semibold text-gray-900">Foto de Perfil</h2>
+          </div>
+          
+          <div className="relative w-24 h-24 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden mx-auto">
+            {profile?.photoUrl ? (
+              <img src={profile.photoUrl} alt="Perfil" className="w-full h-full object-cover" />
+            ) : (
+              <User size={40} className="text-gray-300" />
             )}
+          </div>
+
+          <div className="flex gap-2">
             <button
               onClick={() => cameraInputRef.current?.click()}
-              className="absolute bottom-0 right-0 w-7 h-7 bg-black rounded-full flex items-center justify-center border-2 border-white"
+              className="btn-secondary flex-1 text-sm py-2"
             >
-              <Camera size={13} color="white" />
+              <Camera size={14} /> Tirar foto
+            </button>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="btn-secondary flex-1 text-sm py-2"
+            >
+              <Upload size={14} /> Galeria
             </button>
           </div>
 
-          <div className="flex-1 min-w-0">
-            <h2 className="font-bold text-gray-900 text-xl truncate">{profile?.name ?? user?.name ?? "Usuário"}</h2>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => e.target.files?.[0] && handlePhotoSelect(e.target.files[0])}
+          />
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="user"
+            className="hidden"
+            onChange={(e) => e.target.files?.[0] && handlePhotoSelect(e.target.files[0])}
+          />
+        </div>
+
+        {/* Stats */}
+        <div className="grid grid-cols-3 gap-3">
+          <div className="app-card text-center">
+            <p className="text-2xl font-bold text-gray-900">{latestWeight ? `${latestWeight}` : "—"}</p>
+            <p className="text-xs text-gray-500 mt-1">Peso atual</p>
+          </div>
+          <div className="app-card text-center">
+            <p className="text-2xl font-bold text-gray-900">{completed}/{target}</p>
+            <p className="text-xs text-gray-500 mt-1">Treinos</p>
+          </div>
+          <div className="app-card text-center">
+            <p className="text-2xl font-bold text-gray-900">{bodyHistory?.length ?? 0}</p>
+            <p className="text-xs text-gray-500 mt-1">Registros</p>
+          </div>
+        </div>
+
+        {/* Body Analysis */}
+        {profile?.photoUrl && (
+          <div className="app-card space-y-4">
             <div className="flex items-center gap-2">
-              <p className="text-sm text-gray-500">{profile?.goal ?? "Sem objetivo definido"}</p>
-              <button 
-                onClick={() => {
-                  if (profile?.photoUrl) {
-                    console.log("Iniciando análise para URL:", profile.photoUrl);
-                    analyzeBody.mutate({ photoUrl: profile.photoUrl });
-                  } else {
-                    fileInputRef.current?.click();
-                    toast.info("Envie uma foto para a IA analisar seu corpo!");
-                  }
-                }}
+              <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center">
+                <Sparkles size={16} color="white" />
+              </div>
+              <h2 className="font-semibold text-gray-900">Análise Corporal</h2>
+            </div>
+
+            {analysisResult ? (
+              <div className="space-y-3 bg-gray-50 p-4 rounded-xl">
+                <div>
+                  <p className="text-xs text-gray-500 font-semibold">Gordura Corporal</p>
+                  <p className="text-lg font-bold text-gray-900">{analysisResult.bfEstimate}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 font-semibold">Nível Muscular</p>
+                  <p className="text-lg font-bold text-gray-900">{analysisResult.muscleLevel}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 font-semibold">Resumo</p>
+                  <p className="text-sm text-gray-700">{analysisResult.summary}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 font-semibold">Dica</p>
+                  <p className="text-sm text-gray-700">{analysisResult.tip}</p>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => profile?.photoUrl && analyzeBody.mutate({ photoUrl: profile.photoUrl })}
                 disabled={analyzeBody.isPending}
-                className={`flex items-center gap-1 text-[10px] font-bold bg-black text-white px-2 py-1 rounded-full shadow-lg transition-all ${analyzeBody.isPending ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 active:scale-95'}`}
+                className="btn-primary w-full"
               >
                 {analyzeBody.isPending ? (
                   <>
-                    <Loader2 size={10} className="animate-spin" /> ANALISANDO...
+                    <Loader2 size={16} className="animate-spin" /> Analisando...
                   </>
                 ) : (
                   <>
-                    <Sparkles size={10} /> ANALISAR CORPO
+                    <Sparkles size={16} /> Analisar Composição
                   </>
                 )}
               </button>
-            </div>
-            <p className="text-xs text-gray-400 mt-0.5">{profile?.experienceLevel ?? ""}</p>
+            )}
           </div>
-        </div>
+        )}
 
-        {/* AI Analysis Result */}
-        {analysisResult && (
-          <div className="app-card border-black/10 bg-black/5 animate-in fade-in zoom-in duration-300">
-            <div className="flex items-center gap-2 mb-3 text-black">
-              <Activity size={18} />
-              <h3 className="font-bold text-sm uppercase tracking-wider">Avaliação Física IA</h3>
-            </div>
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              <div className="bg-white p-3 rounded-xl shadow-sm border border-black/5">
-                <p className="text-[10px] text-gray-400 uppercase font-bold">Gordura Estimada</p>
-                <p className="text-xl font-black text-black">{analysisResult.bfEstimate}</p>
+        {/* Progress History */}
+        {bodyHistory && bodyHistory.length > 0 && (
+          <div className="app-card space-y-4">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center">
+                <TrendingDown size={16} color="white" />
               </div>
-              <div className="bg-white p-3 rounded-xl shadow-sm border border-black/5">
-                <p className="text-[10px] text-gray-400 uppercase font-bold">Massa Muscular</p>
-                <p className="text-xl font-black text-black">{analysisResult.muscleLevel}</p>
-              </div>
+              <h2 className="font-semibold text-gray-900">Histórico de Evolução</h2>
             </div>
+
             <div className="space-y-2">
-              <p className="text-xs text-gray-700 leading-relaxed">
-                <span className="font-bold">Análise:</span> {analysisResult.summary}
-              </p>
-              <div className="pt-2 border-t border-black/5">
-                <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Dica do Especialista</p>
-                <p className="text-xs text-gray-600 italic">"{analysisResult.tip}"</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={e => e.target.files?.[0] && handlePhotoSelect(e.target.files[0])} />
-        <input ref={cameraInputRef} type="file" accept="image/*" capture="user" className="hidden" onChange={e => e.target.files?.[0] && handlePhotoSelect(e.target.files[0])} />
-
-        {/* Stats cards */}
-        <div className="grid grid-cols-3 gap-3">
-          <div className="app-card text-center py-3">
-            <p className="text-xl font-bold text-gray-900">{latestWeight ? `${latestWeight}` : "—"}</p>
-            <p className="text-xs text-gray-500 mt-0.5">Peso (kg)</p>
-          </div>
-          <div className="app-card text-center py-3">
-            <p className="text-xl font-bold text-gray-900">{bmi ?? "—"}</p>
-            <p className="text-xs text-gray-500 mt-0.5">IMC</p>
-          </div>
-          <div className="app-card text-center py-3">
-            <p className="text-xl font-bold text-gray-900">{completed}/{target}</p>
-            <p className="text-xs text-gray-500 mt-0.5">Treinos</p>
-          </div>
-        </div>
-
-        {/* BMI label */}
-        {bmiLabel && (
-          <p className="text-xs text-center text-gray-400">{bmiLabel}</p>
-        )}
-
-        {/* Progress to goal */}
-        {targetWeight && latestWeight && (
-          <div className="app-card">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-700">Progresso da meta</span>
-              <span className="text-sm font-bold text-gray-900">{targetWeight}kg</span>
-            </div>
-            <div className="progress-bar">
-              <div
-                className="progress-bar-fill"
-                style={{
-                  width: `${Math.min(Math.max(
-                    ((initialWeight! - latestWeight) / (initialWeight! - targetWeight)) * 100,
-                    0
-                  ), 100)}%`
-                }}
-              />
-            </div>
-            <div className="flex justify-between mt-1.5">
-              <span className="text-xs text-gray-400">Início: {initialWeight}kg</span>
-              <span className="text-xs text-gray-400">Meta: {targetWeight}kg</span>
-            </div>
-          </div>
-        )}
-
-        {/* Body info */}
-        {profile && (
-          <div className="app-card">
-            <h3 className="font-semibold text-gray-900 mb-3 text-sm">Informações físicas</h3>
-            <div className="grid grid-cols-2 gap-y-2 gap-x-4">
-              {[
-                { label: "Idade", value: profile.age ? `${profile.age} anos` : "—" },
-                { label: "Sexo", value: profile.sex ?? "—" },
-                { label: "Altura", value: profile.heightCm ? `${profile.heightCm} cm` : "—" },
-                { label: "Peso atual", value: latestWeight ? `${latestWeight} kg` : "—" },
-                { label: "Dias/semana", value: profile.daysPerWeek ? `${profile.daysPerWeek} dias` : "—" },
-                { label: "Tempo/treino", value: profile.minutesPerSession ? `${profile.minutesPerSession} min` : "—" },
-                { label: "Academia", value: profile.gymType ?? "—" },
-              ].map(({ label, value }) => (
-                <div key={label}>
-                  <p className="text-xs text-gray-400">{label}</p>
-                  <p className="text-sm font-medium text-gray-800">{value}</p>
+              {bodyHistory.slice(0, 5).map((record, i) => (
+                <div key={record.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">
+                      {new Date(record.recordedAt).toLocaleDateString("pt-BR")}
+                    </p>
+                    {record.weightKg && (
+                      <p className="text-xs text-gray-500">{record.weightKg} kg</p>
+                    )}
+                  </div>
+                  {i > 0 && bodyHistory[i - 1]?.weightKg && record.weightKg && (
+                    <p className={`text-sm font-semibold ${
+                      record.weightKg < bodyHistory[i - 1].weightKg
+                        ? "text-green-600"
+                        : "text-red-600"
+                    }`}>
+                      {record.weightKg < bodyHistory[i - 1].weightKg ? "↓" : "↑"}
+                      {Math.abs(record.weightKg - bodyHistory[i - 1].weightKg).toFixed(1)} kg
+                    </p>
+                  )}
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* Quick links */}
-        <div className="app-card p-0 overflow-hidden">
-          {[
-            { icon: Dumbbell, label: "Meu treino", path: "/dashboard" },
-            { icon: Utensils, label: "Alimentação", path: "/nutrition" },
-            { icon: Target, label: "Meus objetivos", path: "/goals" },
-            { icon: TrendingDown, label: "Histórico de evolução", path: "/trainer" },
-          ].map(({ icon: Icon, label, path }, i, arr) => (
-            <button
-              key={path}
-              onClick={() => navigate(path)}
-              className={`w-full flex items-center justify-between px-4 py-3.5 hover:bg-gray-50 transition-colors ${i < arr.length - 1 ? "border-b border-gray-100" : ""}`}
-            >
-              <div className="flex items-center gap-3">
-                <Icon size={18} className="text-gray-500" />
-                <span className="text-sm font-medium text-gray-800">{label}</span>
-              </div>
-              <ChevronRight size={16} className="text-gray-400" />
-            </button>
-          ))}
+        {/* Quick Links */}
+        <div className="app-card space-y-2">
+          <h2 className="font-semibold text-gray-900 mb-3">Atalhos</h2>
+          <a href="/dashboard" className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg transition">
+            <div className="flex items-center gap-3">
+              <Dumbbell size={18} className="text-gray-600" />
+              <span className="text-sm font-medium text-gray-900">Meu Treino</span>
+            </div>
+            <ChevronRight size={18} className="text-gray-400" />
+          </a>
+          <a href="/nutrition" className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg transition">
+            <div className="flex items-center gap-3">
+              <Utensils size={18} className="text-gray-600" />
+              <span className="text-sm font-medium text-gray-900">Nutrição</span>
+            </div>
+            <ChevronRight size={18} className="text-gray-400" />
+          </a>
+          <a href="/goals" className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg transition">
+            <div className="flex items-center gap-3">
+              <Target size={18} className="text-gray-600" />
+              <span className="text-sm font-medium text-gray-900">Metas</span>
+            </div>
+            <ChevronRight size={18} className="text-gray-400" />
+          </a>
         </div>
-
-        {/* Logout */}
-        <button
-          onClick={handleLogout}
-          disabled={logout.isPending}
-          className="btn-secondary text-red-500 border-red-200 py-3"
-        >
-          {logout.isPending ? <Loader2 size={16} className="animate-spin" /> : <LogOut size={16} />}
-          Sair da conta
-        </button>
       </div>
     </AppLayout>
   );
