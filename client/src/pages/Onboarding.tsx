@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
-import { Sparkles, Camera, Upload, User, ChevronDown, Loader2 } from "lucide-react";
+import { Sparkles, Camera, Upload, User, ChevronDown, Loader2, ShieldCheck, ScanFace } from "lucide-react";
 import { toast } from "sonner";
 
 const GOALS = ["Hipertrofia", "Emagrecimento", "Condicionamento", "Saúde geral", "Força", "Resistência"];
@@ -9,11 +9,42 @@ const LEVELS = ["Iniciante", "Intermediário", "Avançado"] as const;
 const GYM_TYPES = ["Academia completa", "Calistenia", "Em casa", "Musculação básica", "Funcional"];
 const SEX_OPTIONS = ["Masculino", "Feminino", "Outro"] as const;
 
+/** Redimensiona uma imagem via canvas antes do upload */
+function resizeImage(file: File, maxSize: number, quality: number): Promise<string> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let w = img.width;
+        let h = img.height;
+        if (w > h) {
+          if (w > maxSize) { h = Math.round(h * maxSize / w); w = maxSize; }
+        } else {
+          if (h > maxSize) { w = Math.round(w * maxSize / h); h = maxSize; }
+        }
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext("2d")?.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", quality).split(",")[1]);
+      };
+      img.src = e.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function Onboarding() {
   const [, navigate] = useLocation();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
 
+  // ── Refs para inputs de arquivo ───────────────────────────────────────────
+  const profileFileRef    = useRef<HTMLInputElement>(null);
+  const profileCameraRef  = useRef<HTMLInputElement>(null);
+  const evalFileRef       = useRef<HTMLInputElement>(null);
+  const evalCameraRef     = useRef<HTMLInputElement>(null);
+
+  // ── Estado do formulário ──────────────────────────────────────────────────
   const [form, setForm] = useState({
     name: "",
     age: "",
@@ -31,27 +62,36 @@ export default function Onboarding() {
     avoidedExercises: "",
   });
 
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-  const [photoBase64, setPhotoBase64] = useState<string | null>(null);
+  // ── Foto de Perfil ────────────────────────────────────────────────────────
+  const [profilePhotoPreview, setProfilePhotoPreview] = useState<string | null>(null);
+  const [profilePhotoBase64, setProfilePhotoBase64]   = useState<string | null>(null);
+
+  // ── Foto de Avaliação Física ──────────────────────────────────────────────
+  const [evalPhotoPreview, setEvalPhotoPreview] = useState<string | null>(null);
+  const [evalPhotoBase64, setEvalPhotoBase64]   = useState<string | null>(null);
+
   const [isGenerating, setIsGenerating] = useState(false);
 
-  const saveProfile = trpc.profile.save.useMutation();
-  const uploadPhoto = trpc.profile.uploadPhoto.useMutation();
-  const generateWorkout = trpc.workout.generate.useMutation();
-
-  const handlePhotoSelect = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const result = e.target?.result as string;
-      setPhotoPreview(result);
-      const base64 = result.split(",")[1];
-      setPhotoBase64(base64);
-    };
-    reader.readAsDataURL(file);
-  };
+  const saveProfile    = trpc.profile.save.useMutation();
+  const uploadPhoto    = trpc.profile.uploadPhoto.useMutation();
+  const generateWorkout = trpc.workout.generateWithPhoto.useMutation();
 
   const set = (field: string, value: string) => setForm(f => ({ ...f, [field]: value }));
 
+  // ── Handlers de seleção de foto ───────────────────────────────────────────
+  const handleProfilePhotoSelect = async (file: File) => {
+    const base64 = await resizeImage(file, 512, 0.85);
+    setProfilePhotoPreview(`data:image/jpeg;base64,${base64}`);
+    setProfilePhotoBase64(base64);
+  };
+
+  const handleEvalPhotoSelect = async (file: File) => {
+    const base64 = await resizeImage(file, 1024, 0.85);
+    setEvalPhotoPreview(`data:image/jpeg;base64,${base64}`);
+    setEvalPhotoBase64(base64);
+  };
+
+  // ── Submit ────────────────────────────────────────────────────────────────
   const handleSubmit = async () => {
     if (!form.name || !form.age || !form.heightCm || !form.weightKg) {
       toast.error("Preencha os campos obrigatórios: nome, idade, altura e peso.");
@@ -60,15 +100,23 @@ export default function Onboarding() {
 
     setIsGenerating(true);
     try {
+      // 1. Upload da foto de perfil (opcional)
       let photoUrl: string | undefined;
       let photoKey: string | undefined;
-
-      if (photoBase64) {
-        const uploaded = await uploadPhoto.mutateAsync({ base64: photoBase64 });
+      if (profilePhotoBase64) {
+        const uploaded = await uploadPhoto.mutateAsync({ base64: profilePhotoBase64 });
         photoUrl = uploaded.url;
         photoKey = uploaded.key;
       }
 
+      // 2. Upload da foto de avaliação (opcional)
+      let evalPhotoUrl: string | undefined;
+      if (evalPhotoBase64) {
+        const uploadedEval = await uploadPhoto.mutateAsync({ base64: evalPhotoBase64 });
+        evalPhotoUrl = uploadedEval.url;
+      }
+
+      // 3. Salvar perfil
       await saveProfile.mutateAsync({
         name: form.name,
         age: parseInt(form.age),
@@ -88,16 +136,53 @@ export default function Onboarding() {
         photoKey,
       });
 
-      await generateWorkout.mutateAsync();
-      toast.success("Treino gerado com sucesso!");
-      navigate("/dashboard");
+      // 4. Ir para tela de processamento passando a foto de avaliação
+      navigate(`/processing${evalPhotoUrl ? `?evalPhoto=${encodeURIComponent(evalPhotoUrl)}` : ""}`);
     } catch (err) {
       console.error(err);
-      toast.error("Erro ao gerar treino. Tente novamente.");
-    } finally {
+      toast.error("Erro ao salvar perfil. Tente novamente.");
       setIsGenerating(false);
     }
   };
+
+  // ── Componente de botões de foto ──────────────────────────────────────────
+  const PhotoButtons = ({
+    preview,
+    onCamera,
+    onGallery,
+    shape = "circle",
+  }: {
+    preview: string | null;
+    onCamera: () => void;
+    onGallery: () => void;
+    shape?: "circle" | "rect";
+  }) => (
+    <div className="flex flex-col items-center gap-3">
+      <div
+        className={`${
+          shape === "circle"
+            ? "w-24 h-24 rounded-full"
+            : "w-full h-44 rounded-2xl"
+        } bg-gray-100 border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden cursor-pointer`}
+        style={{ maxWidth: shape === "rect" ? "100%" : undefined }}
+        onClick={onGallery}
+      >
+        {preview ? (
+          <img src={preview} alt="Foto" className="w-full h-full object-cover" />
+        ) : (
+          <User size={shape === "circle" ? 36 : 48} className="text-gray-300" />
+        )}
+      </div>
+      <div className="flex gap-2 w-full">
+        <button className="btn-secondary py-2.5 px-4 text-sm" onClick={onCamera}>
+          <Camera size={15} /> Tirar foto
+        </button>
+        <button className="btn-secondary py-2.5 px-4 text-sm" onClick={onGallery}>
+          <Upload size={15} /> Escolher da galeria
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-white pb-8">
@@ -108,48 +193,36 @@ export default function Onboarding() {
       </div>
 
       <div className="px-5 space-y-5">
-        {/* Photo upload */}
-        <div className="flex flex-col items-center gap-3 py-4">
-          <div
-            className="w-24 h-24 rounded-full bg-gray-100 border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden cursor-pointer"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            {photoPreview ? (
-              <img src={photoPreview} alt="Foto" className="w-full h-full object-cover" />
-            ) : (
-              <User size={36} className="text-gray-400" />
-            )}
+
+        {/* ── SEÇÃO: FOTO DE PERFIL ─────────────────────────────────────────── */}
+        <div className="app-card space-y-3">
+          <div className="flex items-center gap-2 mb-1">
+            <div className="w-7 h-7 bg-black rounded-lg flex items-center justify-center">
+              <User size={14} color="white" />
+            </div>
+            <h2 className="text-base font-bold text-gray-900">Foto de Perfil</h2>
           </div>
-          <div className="flex gap-2">
-            <button
-              className="btn-secondary py-2 px-4 text-sm w-auto"
-              onClick={() => cameraInputRef.current?.click()}
-            >
-              <Camera size={16} /> Câmera
-            </button>
-            <button
-              className="btn-secondary py-2 px-4 text-sm w-auto"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <Upload size={16} /> Álbum
-            </button>
+          <p className="text-xs text-gray-500 leading-relaxed">
+            Esta foto será utilizada apenas como sua imagem de perfil dentro do aplicativo.
+            <span className="font-medium text-gray-600"> Essa foto não será utilizada para análise da IA.</span>
+          </p>
+          <PhotoButtons
+            preview={profilePhotoPreview}
+            onCamera={() => profileCameraRef.current?.click()}
+            onGallery={() => profileFileRef.current?.click()}
+            shape="circle"
+          />
+          <div className="flex items-center gap-1.5 mt-1">
+            <ShieldCheck size={13} className="text-green-500 flex-shrink-0" />
+            <p className="text-[11px] text-gray-400">Uso exclusivo como foto de identificação</p>
           </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={e => e.target.files?.[0] && handlePhotoSelect(e.target.files[0])}
-          />
-          <input
-            ref={cameraInputRef}
-            type="file"
-            accept="image/*"
-            capture="user"
-            className="hidden"
-            onChange={e => e.target.files?.[0] && handlePhotoSelect(e.target.files[0])}
-          />
         </div>
+
+        {/* Inputs ocultos — foto de perfil */}
+        <input ref={profileFileRef}   type="file" accept="image/*"                className="hidden" onChange={e => e.target.files?.[0] && handleProfilePhotoSelect(e.target.files[0])} />
+        <input ref={profileCameraRef} type="file" accept="image/*" capture="user" className="hidden" onChange={e => e.target.files?.[0] && handleProfilePhotoSelect(e.target.files[0])} />
+
+        {/* ── CAMPOS DO FORMULÁRIO ──────────────────────────────────────────── */}
 
         {/* Name */}
         <div>
@@ -273,7 +346,43 @@ export default function Onboarding() {
           />
         </div>
 
-        {/* Submit */}
+        {/* ── SEÇÃO: FOTO PARA AVALIAÇÃO FÍSICA ────────────────────────────── */}
+        <div className="app-card space-y-3 border-2" style={{ borderColor: "#FF5F6D22", background: "#fff9f9" }}>
+          <div className="flex items-center gap-2 mb-1">
+            <div
+              className="w-7 h-7 rounded-lg flex items-center justify-center"
+              style={{ background: "linear-gradient(135deg, #FF5F6D 0%, #FFC371 100%)" }}
+            >
+              <ScanFace size={14} color="white" />
+            </div>
+            <h2 className="text-base font-bold text-gray-900">Foto para Avaliação Física</h2>
+            <span className="ml-auto text-[10px] font-semibold text-orange-400 bg-orange-50 px-2 py-0.5 rounded-full">Opcional</span>
+          </div>
+          <p className="text-xs text-gray-500 leading-relaxed">
+            Envie uma foto de corpo inteiro, de frente, em um ambiente bem iluminado. Essa imagem será utilizada
+            <span className="font-medium text-gray-700"> exclusivamente pela IA</span> para analisar sua composição
+            corporal e criar um treino personalizado com base na sua estrutura física e nas informações preenchidas
+            neste cadastro.
+          </p>
+          <PhotoButtons
+            preview={evalPhotoPreview}
+            onCamera={() => evalCameraRef.current?.click()}
+            onGallery={() => evalFileRef.current?.click()}
+            shape="rect"
+          />
+          <div className="flex items-start gap-1.5 mt-1">
+            <ShieldCheck size={13} className="text-orange-400 flex-shrink-0 mt-0.5" />
+            <p className="text-[11px] text-gray-400 leading-relaxed">
+              Usada exclusivamente para gerar seu primeiro treino e servir como base para futuras comparações de evolução física.
+            </p>
+          </div>
+        </div>
+
+        {/* Inputs ocultos — foto de avaliação */}
+        <input ref={evalFileRef}   type="file" accept="image/*"                  className="hidden" onChange={e => e.target.files?.[0] && handleEvalPhotoSelect(e.target.files[0])} />
+        <input ref={evalCameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={e => e.target.files?.[0] && handleEvalPhotoSelect(e.target.files[0])} />
+
+        {/* ── SUBMIT ────────────────────────────────────────────────────────── */}
         <div className="pt-2 pb-6">
           <button
             className="btn-primary"
@@ -281,9 +390,9 @@ export default function Onboarding() {
             disabled={isGenerating}
           >
             {isGenerating ? (
-              <><Loader2 size={18} className="animate-spin" /> Gerando seu treino...</>
+              <><Loader2 size={18} className="animate-spin" /> Salvando informações...</>
             ) : (
-              <><Sparkles size={18} /> Gerar Meu Primeiro Treino</>
+              <><Sparkles size={18} /> Finalizar Cadastro</>
             )}
           </button>
         </div>

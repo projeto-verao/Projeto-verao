@@ -5,7 +5,9 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 
 import Home from "@/pages/Home";
 import Login from "@/pages/Login";
+import Welcome from "@/pages/Welcome";
 import Onboarding from "@/pages/Onboarding";
+import Processing from "@/pages/Processing";
 import Dashboard from "@/pages/Dashboard";
 import IATrainer from "@/pages/IATrainer";
 import Nutrition from "@/pages/Nutrition";
@@ -21,7 +23,9 @@ export default function App() {
         <Switch>
           <Route path="/" component={Home} />
           <Route path="/login" component={Login} />
+          <Route path="/welcome" component={Welcome} />
           <Route path="/onboarding" component={Onboarding} />
+          <Route path="/processing" component={Processing} />
           <Route path="/dashboard" component={Dashboard} />
           <Route path="/trainer" component={IATrainer} />
           <Route path="/nutrition" component={Nutrition} />

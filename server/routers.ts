@@ -233,6 +233,136 @@ Regras:
       }
     }),
 
+    // Gera treino com análise opcional de foto de avaliação física (usado no onboarding)
+    generateWithPhoto: protectedProcedure
+      .input(z.object({
+        evalPhotoUrl: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const profile = await getUserProfile(ctx.user.id);
+        if (!profile) throw new Error("Perfil não encontrado. Complete o onboarding primeiro.");
+
+        // Contexto visual da foto de avaliação (se disponível)
+        let visualContext = "";
+        if (input.evalPhotoUrl) {
+          try {
+            const analysisResponse = await invokeLLM({
+              model: "gemini-2.5-flash",
+              messages: [
+                {
+                  role: "system",
+                  content: "Você é um especialista em avaliação física. Analise a foto e forneça um resumo objetivo da composição corporal visível (estimativa de gordura corporal, massa muscular, postura). Seja conciso e profissional. Responda em português.",
+                },
+                {
+                  role: "user",
+                  content: [
+                    { type: "text", text: "Analise a composição corporal desta foto para auxiliar na criação de um plano de treino personalizado." },
+                    { type: "image_url", image_url: { url: input.evalPhotoUrl } },
+                  ],
+                },
+              ],
+            });
+            visualContext = `\n\nAnálise visual da foto de avaliação física:\n${analysisResponse.choices[0].message.content as string}`;
+
+            // Salvar como registro inicial de progresso corporal
+            try {
+              await addBodyProgress({
+                userId: ctx.user.id,
+                weightKg: profile.weightKg ?? undefined,
+                photoUrl: input.evalPhotoUrl,
+                notes: "Foto de avaliação inicial — cadastro",
+              });
+            } catch (e) {
+              console.warn("Não foi possível salvar o progresso corporal inicial:", e);
+            }
+          } catch (e) {
+            console.warn("Análise visual da foto falhou, continuando sem ela:", e);
+          }
+        }
+
+        const prompt = `Você é um personal trainer especializado. Crie um plano de treino completo e personalizado em português para o seguinte perfil:
+
+Nome: ${profile.name || "Usuário"}
+Idade: ${profile.age} anos
+Sexo: ${profile.sex}
+Altura: ${profile.heightCm}cm
+Peso atual: ${profile.weightKg}kg
+Objetivo: ${profile.goal}
+Nível: ${profile.experienceLevel}
+Dias por semana: ${profile.daysPerWeek}
+Tempo por treino: ${profile.minutesPerSession} minutos
+Restrições físicas: ${profile.physicalRestrictions || "nenhuma"}
+Exercícios preferidos: ${profile.preferredExercises || "nenhuma preferência"}
+Exercícios a evitar: ${profile.avoidedExercises || "nenhum"}${visualContext}
+
+Você DEVE responder APENAS com um objeto JSON válido seguindo EXATAMENTE esta estrutura:
+{
+  "title": "Nome do Plano",
+  "days": [
+    {
+      "dayNumber": 1,
+      "title": "Nome do Treino (ex: Peito + Tríceps)",
+      "emoji": "💪",
+      "exercises": [
+        {
+          "name": "Nome do Exercício",
+          "sets": 4,
+          "reps": "8-12",
+          "weight": "30-50kg",
+          "rest": "60s",
+          "notes": "Dica de execução"
+        }
+      ]
+    }
+  ]
+}
+
+Regras:
+1. Escolha um emoji apropriado para cada grupo muscular treinado no dia.
+2. A carga (weight) deve ser uma estimativa baseada no nível do usuário.
+3. Gere o número de dias solicitado (${profile.daysPerWeek}).
+4. Responda APENAS o JSON, sem textos explicativos antes ou depois.`;
+
+        try {
+          const response = await invokeLLM({
+            model: "gemini-2.5-flash",
+            messages: [
+              { role: "system", content: "Você é um personal trainer especializado em criar planos de treino personalizados em formato JSON. Responda sempre em português do Brasil." },
+              { role: "user", content: prompt },
+            ],
+          });
+
+          let content = response.choices[0].message.content as string;
+          content = content.replace(/```json\n?/, "").replace(/```\n?$/, "").trim();
+          const parsed = JSON.parse(content);
+          const title = parsed.title || `Treino Personalizado — ${profile.goal || "Geral"}`;
+
+          const workout = await createWorkout({
+            userId: ctx.user.id,
+            title,
+            content,
+            isActive: true,
+          });
+
+          const versions = await getWorkoutVersions(ctx.user.id);
+          await createWorkoutVersion({
+            userId: ctx.user.id,
+            workoutId: workout!.id,
+            versionNumber: versions.length + 1,
+            title,
+            content,
+            changeDescription: input.evalPhotoUrl
+              ? "Treino gerado com análise visual de avaliação física"
+              : "Treino gerado no cadastro inicial",
+          });
+
+          return workout;
+        } catch (error) {
+          console.error("Erro ao gerar treino no onboarding:", error);
+          throw new Error("Não conseguimos gerar seu treino agora. Por favor, tente novamente em alguns instantes.");
+        }
+      }),
+
     complete: protectedProcedure
       .input(z.object({
         workoutId: z.number(),

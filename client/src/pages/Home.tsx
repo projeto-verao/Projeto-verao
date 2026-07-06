@@ -24,7 +24,7 @@ export default function Home() {
     if (profile) {
       navigate("/dashboard");
     } else {
-      navigate("/onboarding");
+      navigate("/welcome");
     }
   }, [isAuthenticated, authLoading, profile, profileLoading, navigate]);
 
