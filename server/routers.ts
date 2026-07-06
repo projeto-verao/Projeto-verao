@@ -84,6 +84,51 @@ export const appRouter = router({
         const { url } = await storagePut(key, buffer, input.mimeType);
         return { url, key };
       }),
+
+    analyzeBody: protectedProcedure
+      .input(z.object({ photoUrl: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        const profile = await getUserProfile(ctx.user.id);
+        
+        const systemPrompt = `Você é um especialista em avaliação física e visão computacional. 
+        Analise a foto do usuário e forneça uma estimativa amigável e profissional de sua composição corporal.
+        Considere os dados do perfil: ${profile ? JSON.stringify({ age: profile.age, weight: profile.weightKg, height: profile.heightCm }) : "N/A"}.
+        
+        Responda APENAS com um JSON no formato:
+        {
+          "bfEstimate": "XX%",
+          "muscleLevel": "Baixo/Médio/Alto",
+          "summary": "Uma breve análise do que é visível na foto.",
+          "tip": "Uma dica prática de treino ou dieta baseada na foto."
+        }`;
+
+        const response = await invokeLLM({
+          model: "gemini-2.5-flash",
+          messages: [
+            { role: "system", content: systemPrompt },
+            {
+              role: "user",
+              content: [
+                { type: "text", text: "Analise minha composição corporal com base nesta foto e nos meus dados de perfil." },
+                { type: "image_url", image_url: { url: input.photoUrl } }
+              ]
+            }
+          ],
+        });
+
+        const content = response.choices[0].message.content as string;
+        try {
+          return JSON.parse(content.replace(/```json\n?/, "").replace(/```\n?$/, "").trim());
+        } catch (e) {
+          console.error("Erro ao parsear análise corporal:", e);
+          return {
+            bfEstimate: "Análise pendente",
+            muscleLevel: "—",
+            summary: "Não foi possível processar a imagem agora. Tente novamente.",
+            tip: "Certifique-se de que a foto esteja bem iluminada."
+          };
+        }
+      }),
   }),
 
   // ─── Workout ──────────────────────────────────────────────────────────────
@@ -256,72 +301,93 @@ Regras:
         const [profile, activeWorkout, history] = await Promise.all([
           getUserProfile(ctx.user.id),
           getActiveWorkout(ctx.user.id),
-          getChatHistory(ctx.user.id, 20),
+          getChatHistory(ctx.user.id, 10),
         ]);
 
-        // Save user message
         await addChatMessage({
           userId: ctx.user.id,
           role: "user",
           content: input.message,
         });
 
-        const systemPrompt = `Você é um personal trainer virtual especializado. 
-Perfil do usuário: ${profile ? JSON.stringify({ goal: profile.goal, level: profile.experienceLevel, daysPerWeek: profile.daysPerWeek }) : "não disponível"}
-Treino atual: ${activeWorkout ? activeWorkout.content.substring(0, 500) + "..." : "nenhum treino ativo"}
+        const systemPrompt = `Você é um personal trainer virtual que tem poder de editar o treino do usuário.
+Perfil: ${profile ? JSON.stringify({ goal: profile.goal, level: profile.experienceLevel }) : "N/A"}
+Treino Atual: ${activeWorkout ? activeWorkout.content : "Nenhum"}
 
-Responda de forma direta, amigável e profissional em português. 
-Se o usuário pedir para modificar o treino, sugira as alterações de forma clara.
-Você pode ajudar com: exercícios, técnicas, nutrição básica, motivação e ajustes no treino.`;
+Se o usuário pedir para mudar, trocar, remover ou adicionar algo ao treino:
+1. Responda amigavelmente confirmando a mudança.
+2. No final da sua resposta, inclua EXATAMENTE a tag <UPDATE_WORKOUT> seguida do JSON COMPLETO do novo treino estruturado.
 
-        const messages = history.reverse().map(m => ({
+Estrutura do JSON:
+{
+  "title": "Nome do Plano",
+  "days": [
+    {
+      "dayNumber": 1,
+      "title": "Título do Dia",
+      "emoji": "💪",
+      "exercises": [
+        { "name": "Exercício", "sets": 3, "reps": "10", "weight": "20kg", "rest": "60s", "notes": "" }
+      ]
+    }
+  ]
+}
+
+Se NÃO houver pedido de mudança no treino, responda normalmente sem a tag.
+Responda sempre em português do Brasil.`;
+
+        const chatMessages = history.reverse().map(m => ({
           role: m.role as "user" | "assistant",
           content: m.content,
         }));
-        messages.push({ role: "user", content: input.message });
+        chatMessages.push({ role: "user", content: input.message });
 
         const response = await invokeLLM({
           model: "gemini-2.5-flash",
           messages: [
             { role: "system", content: systemPrompt },
-            ...messages,
+            ...chatMessages,
           ],
         });
 
-        const assistantContent = response.choices[0].message.content as string;
+        let aiMessage = response.choices[0].message.content as string;
+        let updatedWorkout = false;
+
+        if (aiMessage.includes("<UPDATE_WORKOUT>")) {
+          const parts = aiMessage.split("<UPDATE_WORKOUT>");
+          aiMessage = parts[0].trim();
+          let jsonStr = parts[1].replace(/```json\n?/, "").replace(/```\n?$/, "").trim();
+          
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const workout = await createWorkout({
+              userId: ctx.user.id,
+              title: parsed.title || activeWorkout?.title || "Treino Atualizado",
+              content: jsonStr,
+              isActive: true,
+            });
+
+            await createWorkoutVersion({
+              userId: ctx.user.id,
+              workoutId: workout!.id,
+              versionNumber: (await getWorkoutVersions(ctx.user.id)).length + 1,
+              title: workout!.title,
+              content: jsonStr,
+              changeDescription: `Ajuste via chat: ${input.message.substring(0, 50)}...`,
+            });
+            updatedWorkout = true;
+          } catch (e) {
+            console.error("Erro ao processar atualização de treino via chat:", e);
+          }
+        }
 
         await addChatMessage({
           userId: ctx.user.id,
           role: "assistant",
-          content: assistantContent,
+          content: aiMessage,
         });
 
-        // If user asked to modify workout, create new version
-        const modificationKeywords = ["modific", "alter", "troc", "mud", "atualiz", "ajust"];
-        const isModification = modificationKeywords.some(k => input.message.toLowerCase().includes(k));
-        if (isModification && activeWorkout) {
-          const updateResponse = await invokeLLM({
-            model: "gemini-2.5-flash",
-            messages: [
-              { role: "system", content: "Você é um personal trainer. Baseado na conversa, atualize o plano de treino incorporando as mudanças solicitadas. Mantenha o formato estruturado original." },
-              { role: "user", content: `Treino atual:\n${activeWorkout.content}\n\nSolicitação do usuário: ${input.message}\n\nGere o treino atualizado completo:` },
-            ],
-          });
-          const newContent = updateResponse.choices[0].message.content as string;
-          const versions = await getWorkoutVersions(ctx.user.id);
-          await createWorkout({ userId: ctx.user.id, title: activeWorkout.title, content: newContent, isActive: true });
-          const newWorkout = await getActiveWorkout(ctx.user.id);
-          await createWorkoutVersion({
-            userId: ctx.user.id,
-            workoutId: newWorkout!.id,
-            versionNumber: versions.length + 1,
-            title: activeWorkout.title,
-            content: newContent,
-            changeDescription: `Modificado via chat: "${input.message.substring(0, 100)}"`,
-          });
-        }
-
-        return { content: assistantContent };
+        return { content: aiMessage, updatedWorkout };
       }),
   }),
 

@@ -5,7 +5,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import AppLayout from "@/components/AppLayout";
 import {
   User, Camera, Upload, LogOut, ChevronRight, Dumbbell,
-  Utensils, Target, TrendingDown, Loader2, Settings
+  Utensils, Target, TrendingDown, Loader2, Settings, Sparkles, Activity
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -18,6 +18,15 @@ export default function Profile() {
   const { data: profile, refetch } = trpc.profile.get.useQuery();
   const { data: weekProgress } = trpc.workout.weekProgress.useQuery();
   const { data: bodyHistory } = trpc.bodyProgress.history.useQuery();
+  const [analysisResult, setAnalysisResult] = useState<any>(null);
+
+  const analyzeBody = trpc.profile.analyzeBody.useMutation({
+    onSuccess: (data) => {
+      setAnalysisResult(data);
+      toast.success("Análise corporal concluída!");
+    },
+    onError: () => toast.error("Não foi possível analisar a foto agora."),
+  });
 
   const saveProfile = trpc.profile.save.useMutation({
     onSuccess: () => { toast.success("Foto atualizada!"); refetch(); },
@@ -94,7 +103,7 @@ export default function Profile() {
                 </div>
               )}
             </div>
-            {(uploadPhoto.isPending || saveProfile.isPending) && (
+            {(uploadPhoto.isPending || saveProfile.isPending || analyzeBody.isPending) && (
               <div className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center">
                 <Loader2 size={18} color="white" className="animate-spin" />
               </div>
@@ -109,10 +118,50 @@ export default function Profile() {
 
           <div className="flex-1 min-w-0">
             <h2 className="font-bold text-gray-900 text-xl truncate">{profile?.name ?? user?.name ?? "Usuário"}</h2>
-            <p className="text-sm text-gray-500">{profile?.goal ?? "Sem objetivo definido"}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm text-gray-500">{profile?.goal ?? "Sem objetivo definido"}</p>
+              {profile?.photoUrl && (
+                <button 
+                  onClick={() => analyzeBody.mutate({ photoUrl: profile.photoUrl! })}
+                  disabled={analyzeBody.isPending}
+                  className="flex items-center gap-1 text-[10px] font-bold bg-black text-white px-2 py-1 rounded-full animate-pulse"
+                >
+                  <Sparkles size={10} /> ANALISAR CORPO
+                </button>
+              )}
+            </div>
             <p className="text-xs text-gray-400 mt-0.5">{profile?.experienceLevel ?? ""}</p>
           </div>
         </div>
+
+        {/* AI Analysis Result */}
+        {analysisResult && (
+          <div className="app-card border-black/10 bg-black/5 animate-in fade-in zoom-in duration-300">
+            <div className="flex items-center gap-2 mb-3 text-black">
+              <Activity size={18} />
+              <h3 className="font-bold text-sm uppercase tracking-wider">Avaliação Física IA</h3>
+            </div>
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="bg-white p-3 rounded-xl shadow-sm border border-black/5">
+                <p className="text-[10px] text-gray-400 uppercase font-bold">Gordura Estimada</p>
+                <p className="text-xl font-black text-black">{analysisResult.bfEstimate}</p>
+              </div>
+              <div className="bg-white p-3 rounded-xl shadow-sm border border-black/5">
+                <p className="text-[10px] text-gray-400 uppercase font-bold">Massa Muscular</p>
+                <p className="text-xl font-black text-black">{analysisResult.muscleLevel}</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs text-gray-700 leading-relaxed">
+                <span className="font-bold">Análise:</span> {analysisResult.summary}
+              </p>
+              <div className="pt-2 border-t border-black/5">
+                <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Dica do Especialista</p>
+                <p className="text-xs text-gray-600 italic">"{analysisResult.tip}"</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={e => e.target.files?.[0] && handlePhotoSelect(e.target.files[0])} />
         <input ref={cameraInputRef} type="file" accept="image/*" capture="user" className="hidden" onChange={e => e.target.files?.[0] && handlePhotoSelect(e.target.files[0])} />
