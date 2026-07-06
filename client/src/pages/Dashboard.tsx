@@ -271,6 +271,7 @@ export default function Dashboard() {
                       <button 
                         className="btn-primary mt-4 py-3"
                         onClick={() => {
+                          if (!activeWorkout) return;
                           completeWorkout.mutate({ workoutId: activeWorkout.id });
                           setSelectedDay(null);
                         }}

@@ -213,7 +213,9 @@ const normalizeToolChoice = (
 };
 
 const resolveApiUrl = (model?: string) => {
-  if (model?.toLowerCase().includes("gemini")) {
+  // Se for modelo Gemini E a chave nativa do Google estiver configurada, usa a API direta do Google.
+  // Caso contrário (inclusive para Gemini sem GEMINI_API_KEY), usa o proxy OpenAI/Forge que suporta todos os modelos.
+  if (model?.toLowerCase().includes("gemini") && ENV.geminiApiKey) {
     return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${ENV.geminiApiKey}`;
   }
   return ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0
@@ -222,12 +224,11 @@ const resolveApiUrl = (model?: string) => {
 };
 
 const assertApiKey = (model?: string) => {
-  if (model?.toLowerCase().includes("gemini")) {
-    if (!ENV.geminiApiKey) {
-      throw new Error("GEMINI_API_KEY is not configured");
-    }
-    return;
+  // Se for Gemini com chave nativa configurada, valida a chave Gemini.
+  if (model?.toLowerCase().includes("gemini") && ENV.geminiApiKey) {
+    return; // geminiApiKey já validada acima
   }
+  // Para todos os outros casos (incluindo Gemini via proxy), valida a chave do proxy.
   if (!ENV.forgeApiKey) {
     throw new Error("OPENAI_API_KEY is not configured");
   }
@@ -368,15 +369,17 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
 
   assertApiKey(model);
 
-  if (model?.toLowerCase().includes("gemini")) {
+  // Usa a API nativa do Google Gemini apenas se GEMINI_API_KEY estiver configurada.
+  // Caso contrário, cai no fluxo padrão OpenAI/Forge que também suporta modelos Gemini via proxy.
+  if (model?.toLowerCase().includes("gemini") && ENV.geminiApiKey) {
     const geminiMessages = messages.map(m => {
       const role = m.role === "assistant" ? "model" : "user";
       let text = "";
       if (typeof m.content === "string") {
         text = m.content;
       } else if (Array.isArray(m.content)) {
-        text = m.content
-          .map(part => ("text" in part ? part.text : ""))
+        text = (m.content as MessageContent[])
+          .map(part => (typeof part === "object" && "text" in part ? (part as TextContent).text : ""))
           .join("\n");
       } else if ("text" in m.content) {
         text = m.content.text;

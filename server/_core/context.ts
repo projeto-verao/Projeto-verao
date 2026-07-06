@@ -20,13 +20,14 @@ export async function createContext(
     // This allows testing the AI trainer without a real OAuth setup
     user = {
       id: 1,
+      openId: "test-open-id",
       email: "teste@projetoverao.com",
       name: "Usuário de Teste",
+      loginMethod: "preview",
       createdAt: new Date(),
       updatedAt: new Date(),
+      lastSignedIn: new Date(),
       role: "user",
-      googleId: "test-google-id",
-      avatarUrl: null,
     } as User;
   }
 

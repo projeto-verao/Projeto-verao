@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import AppLayout from "@/components/AppLayout";
-import { ArrowLeft, Send, Loader2, Camera, Upload, User, ChevronDown, RotateCcw } from "lucide-react";
+import { ArrowLeft, Send, Loader2, Camera, Upload, User, ChevronDown, RotateCcw, Sparkles } from "lucide-react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 import { Streamdown } from "streamdown";
