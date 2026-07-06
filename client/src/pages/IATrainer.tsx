@@ -65,9 +65,14 @@ export default function IATrainer() {
   const addProgress = trpc.bodyProgress.add.useMutation({
     onSuccess: () => { toast.success("Registro salvo!"); refetchBody(); setEvoForm({ weightKg: "", bodyFatPercent: "", chestCm: "", waistCm: "", armCm: "", thighCm: "", notes: "" }); },
   });
-  const analyzeEvolution = trpc.bodyProgress.analyzeEvolution.useMutation({
+  const analyzeEvolution = trpc.profile.analyzeBody.useMutation({
+    onSuccess: (data) => {
+      setAnalysisResult(data);
+      toast.success("Análise corporal concluída!");
+    },
     onError: () => toast.error("Erro ao analisar evolução."),
   });
+  const [analysisResult, setAnalysisResult] = useState<any>(null);
 
   const [evoForm, setEvoForm] = useState({ weightKg: "", bodyFatPercent: "", chestCm: "", waistCm: "", armCm: "", thighCm: "", notes: "" });
   const [evoPhotoBase64, setEvoPhotoBase64] = useState<string | null>(null);
@@ -357,7 +362,15 @@ export default function IATrainer() {
               </button>
               <button
                 className="btn-secondary py-2.5 text-sm"
-                onClick={() => analyzeEvolution.mutate()}
+                onClick={() => {
+                  if (evoPhotoPreview) {
+                    analyzeEvolution.mutate({ photoUrl: evoPhotoPreview });
+                  } else if (profile?.photoUrl) {
+                    analyzeEvolution.mutate({ photoUrl: profile.photoUrl });
+                  } else {
+                    toast.info("Envie uma foto primeiro para a IA analisar!");
+                  }
+                }}
                 disabled={analyzeEvolution.isPending}
               >
                 {analyzeEvolution.isPending ? <Loader2 size={14} className="animate-spin" /> : null}
@@ -365,9 +378,28 @@ export default function IATrainer() {
               </button>
             </div>
 
-            {analyzeEvolution.data && (
-              <div className="mt-4 p-3 bg-gray-50 rounded-lg text-sm text-gray-700">
-                <Streamdown>{analyzeEvolution.data.content}</Streamdown>
+            {analysisResult && (
+              <div className="mt-4 p-4 bg-black/5 border border-black/10 rounded-xl space-y-3 animate-in fade-in slide-in-from-top-2">
+                <div className="flex items-center gap-2 text-black font-bold text-xs uppercase tracking-wider">
+                  <Sparkles size={14} /> Avaliação Física IA
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="bg-white p-2 rounded-lg border border-black/5">
+                    <p className="text-[10px] text-gray-400 font-bold uppercase">Gordura Est.</p>
+                    <p className="text-lg font-black text-black">{analysisResult.bfEstimate}</p>
+                  </div>
+                  <div className="bg-white p-2 rounded-lg border border-black/5">
+                    <p className="text-[10px] text-gray-400 font-bold uppercase">Massa Musc.</p>
+                    <p className="text-lg font-black text-black">{analysisResult.muscleLevel}</p>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-700 leading-relaxed">
+                  {analysisResult.summary}
+                </p>
+                <div className="pt-2 border-t border-black/5">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase">Dica do Personal</p>
+                  <p className="text-xs text-gray-600 italic">"{analysisResult.tip}"</p>
+                </div>
               </div>
             )}
           </div>
