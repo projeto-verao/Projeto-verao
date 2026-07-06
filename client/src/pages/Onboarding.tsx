@@ -1,5 +1,6 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
+import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { Sparkles, Camera, Upload, User, ChevronDown, Loader2, ShieldCheck, ScanFace } from "lucide-react";
 import { toast } from "sonner";
@@ -37,6 +38,15 @@ function resizeImage(file: File, maxSize: number, quality: number): Promise<stri
 
 export default function Onboarding() {
   const [, navigate] = useLocation();
+  const { isAuthenticated, loading: authLoading } = useAuth();
+
+  // Redireciona para login se não autenticado
+  useEffect(() => {
+    if (authLoading) return;
+    if (!isAuthenticated) {
+      navigate("/login");
+    }
+  }, [isAuthenticated, authLoading, navigate]);
 
   // ── Refs para inputs de arquivo ───────────────────────────────────────────
   const profileFileRef    = useRef<HTMLInputElement>(null);

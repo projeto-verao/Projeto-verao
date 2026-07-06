@@ -10,8 +10,16 @@ import { toast } from "sonner";
 import { Streamdown } from "streamdown";
 
 export default function Dashboard() {
-  const { user } = useAuth();
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
   const [, navigate] = useLocation();
+
+  // Redireciona para login se não autenticado
+  useEffect(() => {
+    if (authLoading) return;
+    if (!isAuthenticated) {
+      navigate("/login");
+    }
+  }, [isAuthenticated, authLoading, navigate]);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [completedSets, setCompletedSets] = useState<Record<string, boolean>>({});
   const [restTimer, setRestTimer] = useState<{ seconds: number; isActive: boolean } | null>(null);

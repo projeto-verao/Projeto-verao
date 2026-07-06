@@ -1,8 +1,19 @@
+import { useEffect } from "react";
 import { useLocation } from "wouter";
+import { useAuth } from "@/_core/hooks/useAuth";
 import { Dumbbell, Sparkles, ChevronRight, Activity, Target, Brain } from "lucide-react";
 
 export default function Welcome() {
   const [, navigate] = useLocation();
+  const { isAuthenticated, loading: authLoading } = useAuth();
+
+  // Redireciona para login se não autenticado
+  useEffect(() => {
+    if (authLoading) return;
+    if (!isAuthenticated) {
+      navigate("/login");
+    }
+  }, [isAuthenticated, authLoading, navigate]);
 
   return (
     <div className="min-h-screen bg-white flex flex-col">

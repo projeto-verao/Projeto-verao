@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
+import { useAuth } from "@/_core/hooks/useAuth";
 import AppLayout from "@/components/AppLayout";
 import { ArrowLeft, RotateCcw, ChevronDown, ChevronUp, Loader2, History as HistoryIcon } from "lucide-react";
 import { useLocation } from "wouter";
@@ -8,6 +9,15 @@ import { Streamdown } from "streamdown";
 
 export default function History() {
   const [, navigate] = useLocation();
+  const { isAuthenticated, loading: authLoading } = useAuth();
+
+  // Redireciona para login se não autenticado
+  useEffect(() => {
+    if (authLoading) return;
+    if (!isAuthenticated) {
+      navigate("/login");
+    }
+  }, [isAuthenticated, authLoading, navigate]);
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
   const { data: versions, isLoading, refetch } = trpc.workoutHistory.list.useQuery();
