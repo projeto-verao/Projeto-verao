@@ -120,15 +120,20 @@ export default function Profile() {
             <h2 className="font-bold text-gray-900 text-xl truncate">{profile?.name ?? user?.name ?? "Usuário"}</h2>
             <div className="flex items-center gap-2">
               <p className="text-sm text-gray-500">{profile?.goal ?? "Sem objetivo definido"}</p>
-              {profile?.photoUrl && (
-                <button 
-                  onClick={() => analyzeBody.mutate({ photoUrl: profile.photoUrl! })}
-                  disabled={analyzeBody.isPending}
-                  className="flex items-center gap-1 text-[10px] font-bold bg-black text-white px-2 py-1 rounded-full animate-pulse"
-                >
-                  <Sparkles size={10} /> ANALISAR CORPO
-                </button>
-              )}
+              <button 
+                onClick={() => {
+                  if (profile?.photoUrl) {
+                    analyzeBody.mutate({ photoUrl: profile.photoUrl });
+                  } else {
+                    fileInputRef.current?.click();
+                    toast.info("Envie uma foto para a IA analisar seu corpo!");
+                  }
+                }}
+                disabled={analyzeBody.isPending}
+                className="flex items-center gap-1 text-[10px] font-bold bg-black text-white px-2 py-1 rounded-full shadow-lg hover:scale-105 active:scale-95 transition-all"
+              >
+                <Sparkles size={10} /> ANALISAR CORPO
+              </button>
             </div>
             <p className="text-xs text-gray-400 mt-0.5">{profile?.experienceLevel ?? ""}</p>
           </div>
