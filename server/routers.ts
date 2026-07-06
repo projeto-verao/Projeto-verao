@@ -107,59 +107,79 @@ Idade: ${profile.age} anos
 Sexo: ${profile.sex}
 Altura: ${profile.heightCm}cm
 Peso atual: ${profile.weightKg}kg
-Peso desejado: ${profile.targetWeightKg || "não informado"}kg
 Objetivo: ${profile.goal}
 Nível: ${profile.experienceLevel}
 Dias por semana: ${profile.daysPerWeek}
 Tempo por treino: ${profile.minutesPerSession} minutos
-Tipo de academia: ${profile.gymType}
 Restrições físicas: ${profile.physicalRestrictions || "nenhuma"}
-Exercícios preferidos: ${profile.preferredExercises || "nenhum"}
-Exercícios a evitar: ${profile.avoidedExercises || "nenhum"}
 
-Crie um plano estruturado com:
-1. Nome do plano e objetivo
-2. Divisão dos treinos por dia (ex: Treino A, B, C...)
-3. Para cada treino: lista de exercícios com séries, repetições, carga sugerida e observações
-4. Dicas de aquecimento e alongamento
-5. Orientações gerais de progressão
+Você DEVE responder APENAS com um objeto JSON válido seguindo EXATAMENTE esta estrutura:
+{
+  "title": "Nome do Plano",
+  "days": [
+    {
+      "dayNumber": 1,
+      "title": "Nome do Treino (ex: Peito + Tríceps)",
+      "emoji": "💪",
+      "exercises": [
+        {
+          "name": "Nome do Exercício",
+          "sets": 4,
+          "reps": "8-12",
+          "weight": "30-50kg",
+          "rest": "60s",
+          "notes": "Dica de execução"
+        }
+      ]
+    }
+  ]
+}
 
-Formate a resposta de forma clara e organizada usando Markdown.`;
+Regras:
+1. Escolha um emoji apropriado para cada grupo muscular treinado no dia.
+2. A carga (weight) deve ser uma estimativa baseada no nível do usuário.
+3. Gere o número de dias solicitado (${profile.daysPerWeek}).
+4. Responda APENAS o JSON, sem textos explicativos antes ou depois.`;
 
       try {
         const response = await invokeLLM({
           model: "gemini-2.5-flash",
           messages: [
-            { role: "system", content: "Você é um personal trainer especializado em criar planos de treino personalizados. Responda sempre em português do Brasil." },
+            { role: "system", content: "Você é um personal trainer especializado em criar planos de treino personalizados em formato JSON. Responda sempre em português do Brasil." },
             { role: "user", content: prompt },
           ],
         });
 
-        const content = response.choices[0].message.content as string;
-        const title = `Treino Personalizado — ${profile.goal || "Geral"}`;
+        let content = response.choices[0].message.content as string;
+        
+        // Clean potential markdown blocks
+        content = content.replace(/```json\n?/, "").replace(/```\n?$/, "").trim();
+        
+        // Validate JSON
+        const parsed = JSON.parse(content);
+        const title = parsed.title || `Treino Personalizado — ${profile.goal || "Geral"}`;
 
         const workout = await createWorkout({
           userId: ctx.user.id,
           title,
-          content,
+          content, // Storing the JSON string
           isActive: true,
         });
 
-      // Save version
-      const versions = await getWorkoutVersions(ctx.user.id);
-      await createWorkoutVersion({
-        userId: ctx.user.id,
-        workoutId: workout!.id,
-        versionNumber: versions.length + 1,
-        title,
-        content,
-        changeDescription: "Treino inicial gerado pela IA",
-      });
+        const versions = await getWorkoutVersions(ctx.user.id);
+        await createWorkoutVersion({
+          userId: ctx.user.id,
+          workoutId: workout!.id,
+          versionNumber: versions.length + 1,
+          title,
+          content,
+          changeDescription: "Treino estruturado gerado pela IA",
+        });
 
-      return workout;
+        return workout;
       } catch (error) {
         console.error("Erro ao gerar treino com Gemini:", error);
-        throw new Error("Não conseguimos gerar seu treino agora devido a uma falha na comunicação com o especialista de IA. Por favor, verifique sua conexão ou tente novamente em alguns instantes.");
+        throw new Error("Não conseguimos gerar seu treino estruturado agora. Por favor, tente novamente em alguns instantes.");
       }
     }),
 
