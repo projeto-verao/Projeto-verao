@@ -39,7 +39,12 @@ export const appRouter = router({
     me: publicProcedure.query(opts => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
+      // Limpar cookie com múltiplas estratégias para garantir que funcione
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
+      ctx.res.clearCookie(COOKIE_NAME, { path: "/" });
+      ctx.res.setHeader("Set-Cookie", [
+        `${COOKIE_NAME}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 UTC; HttpOnly; SameSite=None; Secure`,
+      ]);
       return { success: true } as const;
     }),
   }),
