@@ -32,20 +32,14 @@ export default function Welcome() {
           <h1 className="text-3xl font-bold text-gray-900 leading-tight mb-4">
             Bem-vindo!{"\n"}Vamos criar um treino{"\n"}
             <span
-              style={{
-                background: "linear-gradient(135deg, #FF5F6D 0%, #FFC371 100%)",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
-                backgroundClip: "text",
-              }}
+              className="bg-clip-text text-transparent bg-gradient-to-r from-orange-500 to-rose-500"
             >
               totalmente personalizado
             </span>{" "}
             para você.
           </h1>
-          <p className="text-gray-500 text-base leading-relaxed max-w-xs mx-auto">
-            Em poucos minutos coletaremos algumas informações e faremos uma avaliação física
-            para que a IA monte seu primeiro treino de acordo com seus objetivos.
+          <p className="text-gray-600 text-base leading-relaxed max-w-xs mx-auto">
+            Em poucos minutos coletaremos algumas informações e faremos uma avaliação física para que a IA monte seu primeiro treino de acordo com seus objetivos.
           </p>
         </div>
 

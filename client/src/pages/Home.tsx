@@ -24,6 +24,7 @@ export default function Home() {
     if (profile) {
       navigate("/dashboard");
     } else {
+      // Após login, se não tiver perfil, vai para Welcome
       navigate("/welcome");
     }
   }, [isAuthenticated, authLoading, profile, profileLoading, navigate]);

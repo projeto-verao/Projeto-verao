@@ -8,9 +8,6 @@ const MESSAGES = [
   "Processando suas informações...",
   "Criando seu treino personalizado...",
   "Preparando sua jornada...",
-  "Ajustando exercícios ao seu perfil...",
-  "Calculando cargas e séries ideais...",
-  "Finalizando seu plano de treino...",
 ];
 
 export default function Processing() {
