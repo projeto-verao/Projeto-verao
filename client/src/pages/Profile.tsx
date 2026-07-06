@@ -265,12 +265,12 @@ export default function Profile() {
                   </div>
                   {i > 0 && bodyHistory[i - 1]?.weightKg && record.weightKg && (
                     <p className={`text-sm font-semibold ${
-                      record.weightKg < bodyHistory[i - 1].weightKg
+                      record.weightKg < (bodyHistory[i - 1]?.weightKg ?? 0)
                         ? "text-green-600"
                         : "text-red-600"
                     }`}>
-                      {record.weightKg < bodyHistory[i - 1].weightKg ? "↓" : "↑"}
-                      {Math.abs(record.weightKg - bodyHistory[i - 1].weightKg).toFixed(1)} kg
+                      {record.weightKg < (bodyHistory[i - 1]?.weightKg ?? 0) ? "↓" : "↑"}
+                      {Math.abs(record.weightKg - (bodyHistory[i - 1]?.weightKg ?? 0)).toFixed(1)} kg
                     </p>
                   )}
                 </div>
