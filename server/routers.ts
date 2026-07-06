@@ -88,44 +88,49 @@ export const appRouter = router({
     analyzeBody: protectedProcedure
       .input(z.object({ photoUrl: z.string() }))
       .mutation(async ({ ctx, input }) => {
-        const profile = await getUserProfile(ctx.user.id);
-        
-        const systemPrompt = `Você é um especialista em avaliação física e visão computacional. 
-        Analise a foto do usuário e forneça uma estimativa amigável e profissional de sua composição corporal.
-        Considere os dados do perfil: ${profile ? JSON.stringify({ age: profile.age, weight: profile.weightKg, height: profile.heightCm }) : "N/A"}.
-        
-        Responda APENAS com um JSON no formato:
-        {
-          "bfEstimate": "XX%",
-          "muscleLevel": "Baixo/Médio/Alto",
-          "summary": "Uma breve análise do que é visível na foto.",
-          "tip": "Uma dica prática de treino ou dieta baseada na foto."
-        }`;
-
-        const response = await invokeLLM({
-          model: "gemini-2.5-flash",
-          messages: [
-            { role: "system", content: systemPrompt },
-            {
-              role: "user",
-              content: [
-                { type: "text", text: "Analise minha composição corporal com base nesta foto e nos meus dados de perfil." },
-                { type: "image_url", image_url: { url: input.photoUrl } }
-              ]
-            }
-          ],
-        });
-
-        const content = response.choices[0].message.content as string;
         try {
-          return JSON.parse(content.replace(/```json\n?/, "").replace(/```\n?$/, "").trim());
-        } catch (e) {
-          console.error("Erro ao parsear análise corporal:", e);
+          const profile = await getUserProfile(ctx.user.id);
+          
+          const systemPrompt = `Você é um especialista em avaliação física e visão computacional. 
+          Analise a foto do usuário e forneça uma estimativa amigável e profissional de sua composição corporal.
+          Considere os dados do perfil: ${profile ? JSON.stringify({ age: profile.age, weight: profile.weightKg, height: profile.heightCm }) : "N/A"}.
+          
+          Responda APENAS com um JSON no formato:
+          {
+            "bfEstimate": "XX%",
+            "muscleLevel": "Baixo/Médio/Alto",
+            "summary": "Uma breve análise do que é visível na foto.",
+            "tip": "Uma dica prática de treino ou dieta baseada na foto."
+          }`;
+
+          const response = await invokeLLM({
+            model: "gemini-2.5-flash",
+            messages: [
+              { role: "system", content: systemPrompt },
+              {
+                role: "user",
+                content: [
+                  { type: "text", text: "Analise minha composição corporal com base nesta foto e nos meus dados de perfil." },
+                  { type: "image_url", image_url: { url: input.photoUrl } }
+                ]
+              }
+            ],
+          });
+
+          const content = response.choices[0].message.content as string;
+          try {
+            return JSON.parse(content.replace(/```json\n?/, "").replace(/```\n?$/, "").trim());
+          } catch (e) {
+            console.error("Erro ao parsear JSON do Gemini:", content);
+            throw new Error("Resposta da IA inválida");
+          }
+        } catch (error: any) {
+          console.error("Erro na análise corporal Gemini:", error);
           return {
-            bfEstimate: "Análise pendente",
+            bfEstimate: "Erro",
             muscleLevel: "—",
-            summary: "Não foi possível processar a imagem agora. Tente novamente.",
-            tip: "Certifique-se de que a foto esteja bem iluminada."
+            summary: "Ocorreu um problema ao processar a imagem. Isso pode acontecer se a foto for muito grande ou se houver instabilidade na API.",
+            tip: "Tente tirar uma foto mais de longe ou com menor resolução."
           };
         }
       }),
