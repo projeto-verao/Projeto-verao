@@ -1,5 +1,13 @@
 {
   "version": "7",
   "dialect": "mysql",
-  "entries": []
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1783228613690,
+      "tag": "0000_spotty_makkari",
+      "breakpoints": true
+    }
+  ]
 }
