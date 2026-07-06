@@ -15,6 +15,7 @@ import Goals from "@/pages/Goals";
 import History from "@/pages/History";
 import Profile from "@/pages/Profile";
 import NotFound from "@/pages/NotFound";
+import Logout from "@/pages/Logout";
 
 export default function App() {
   return (
@@ -23,6 +24,7 @@ export default function App() {
         <Switch>
           <Route path="/" component={Home} />
           <Route path="/login" component={Login} />
+          <Route path="/logout" component={Logout} />
           <Route path="/welcome" component={Welcome} />
           <Route path="/onboarding" component={Onboarding} />
           <Route path="/processing" component={Processing} />
