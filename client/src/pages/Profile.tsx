@@ -22,10 +22,14 @@ export default function Profile() {
 
   const analyzeBody = trpc.profile.analyzeBody.useMutation({
     onSuccess: (data) => {
+      console.log("Análise corporal recebida:", data);
       setAnalysisResult(data);
       toast.success("Análise corporal concluída!");
     },
-    onError: () => toast.error("Não foi possível analisar a foto agora."),
+    onError: (err) => {
+      console.error("Erro na análise corporal:", err);
+      toast.error("Não foi possível analisar a foto agora.");
+    },
   });
 
   const saveProfile = trpc.profile.save.useMutation({
@@ -123,6 +127,7 @@ export default function Profile() {
               <button 
                 onClick={() => {
                   if (profile?.photoUrl) {
+                    console.log("Iniciando análise para URL:", profile.photoUrl);
                     analyzeBody.mutate({ photoUrl: profile.photoUrl });
                   } else {
                     fileInputRef.current?.click();
@@ -130,9 +135,17 @@ export default function Profile() {
                   }
                 }}
                 disabled={analyzeBody.isPending}
-                className="flex items-center gap-1 text-[10px] font-bold bg-black text-white px-2 py-1 rounded-full shadow-lg hover:scale-105 active:scale-95 transition-all"
+                className={`flex items-center gap-1 text-[10px] font-bold bg-black text-white px-2 py-1 rounded-full shadow-lg transition-all ${analyzeBody.isPending ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 active:scale-95'}`}
               >
-                <Sparkles size={10} /> ANALISAR CORPO
+                {analyzeBody.isPending ? (
+                  <>
+                    <Loader2 size={10} className="animate-spin" /> ANALISANDO...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={10} /> ANALISAR CORPO
+                  </>
+                )}
               </button>
             </div>
             <p className="text-xs text-gray-400 mt-0.5">{profile?.experienceLevel ?? ""}</p>
