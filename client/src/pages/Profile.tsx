@@ -47,6 +47,31 @@ export default function Profile() {
     onSuccess: () => { window.location.href = "/login"; },
   });
 
+  const handleLogout = async () => {
+    try {
+      await logout.mutateAsync();
+      // Limpar cache
+      localStorage.clear();
+      sessionStorage.clear();
+      // Limpar cookies
+      document.cookie.split(";").forEach((c) => {
+        document.cookie = c
+          .replace(/^ +/, "")
+          .replace(/=.*/, `=;expires=${new Date().toUTCString()};path=/`);
+      });
+      // Redirecionar
+      setTimeout(() => {
+        window.location.href = "/login";
+      }, 500);
+    } catch (err) {
+      console.error("Erro ao fazer logout:", err);
+      // Mesmo com erro, limpar e redirecionar
+      localStorage.clear();
+      sessionStorage.clear();
+      window.location.href = "/login";
+    }
+  };
+
   const handlePhotoSelect = (file: File) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -303,7 +328,7 @@ export default function Profile() {
 
         {/* Logout */}
         <button
-          onClick={() => logout.mutate()}
+          onClick={handleLogout}
           disabled={logout.isPending}
           className="btn-secondary text-red-500 border-red-200 py-3"
         >

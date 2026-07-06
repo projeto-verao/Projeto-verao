@@ -5,11 +5,23 @@ import { Dumbbell } from "lucide-react";
 
 export default function Logout() {
   const [, navigate] = useLocation();
+  const utils = trpc.useUtils();
   const logout = trpc.auth.logout.useMutation({
     onSuccess: () => {
+      // Invalidar cache de autenticação
+      utils.auth.me.setData(undefined, null);
+      utils.auth.me.invalidate();
+      
       // Limpar localStorage e sessionStorage
       localStorage.clear();
       sessionStorage.clear();
+      
+      // Limpar cookies manualmente
+      document.cookie.split(";").forEach((c) => {
+        document.cookie = c
+          .replace(/^ +/, "")
+          .replace(/=.*/, `=;expires=${new Date().toUTCString()};path=/`);
+      });
       
       // Redirecionar para login
       setTimeout(() => {
@@ -18,8 +30,19 @@ export default function Logout() {
     },
     onError: () => {
       // Mesmo com erro, limpar dados locais e redirecionar
+      utils.auth.me.setData(undefined, null);
+      utils.auth.me.invalidate();
+      // Mesmo com erro, limpar dados locais e redirecionar
       localStorage.clear();
       sessionStorage.clear();
+      
+      // Limpar cookies manualmente
+      document.cookie.split(";").forEach((c) => {
+        document.cookie = c
+          .replace(/^ +/, "")
+          .replace(/=.*/, `=;expires=${new Date().toUTCString()};path=/`);
+      });
+      
       window.location.href = "/login";
     },
   });
