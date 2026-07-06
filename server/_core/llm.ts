@@ -212,12 +212,22 @@ const normalizeToolChoice = (
   return toolChoice;
 };
 
-const resolveApiUrl = () =>
-  ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0
+const resolveApiUrl = (model?: string) => {
+  if (model?.toLowerCase().includes("gemini")) {
+    return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${ENV.geminiApiKey}`;
+  }
+  return ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0
     ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/chat/completions`
     : "https://forge.manus.im/v1/chat/completions";
+};
 
-const assertApiKey = () => {
+const assertApiKey = (model?: string) => {
+  if (model?.toLowerCase().includes("gemini")) {
+    if (!ENV.geminiApiKey) {
+      throw new Error("GEMINI_API_KEY is not configured");
+    }
+    return;
+  }
   if (!ENV.forgeApiKey) {
     throw new Error("OPENAI_API_KEY is not configured");
   }
@@ -340,8 +350,6 @@ const fetchWithBackoff = async (
 };
 
 export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
-  assertApiKey();
-
   const {
     messages,
     tools,
@@ -357,6 +365,84 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     maxTokens,
     max_tokens,
   } = params;
+
+  assertApiKey(model);
+
+  if (model?.toLowerCase().includes("gemini")) {
+    const geminiMessages = messages.map(m => {
+      const role = m.role === "assistant" ? "model" : "user";
+      let text = "";
+      if (typeof m.content === "string") {
+        text = m.content;
+      } else if (Array.isArray(m.content)) {
+        text = m.content
+          .map(part => ("text" in part ? part.text : ""))
+          .join("\n");
+      } else if ("text" in m.content) {
+        text = m.content.text;
+      }
+      return { role, parts: [{ text }] };
+    });
+
+    // Gemini expects the first message to be "user" or "model" (assistant).
+    // System messages are handled differently in Gemini API.
+    const systemMessage = messages.find(m => m.role === "system");
+    const contents = geminiMessages.filter(m => m.role !== "system");
+
+    const payload: any = {
+      contents,
+      generationConfig: {
+        maxOutputTokens: max_tokens ?? maxTokens,
+      },
+    };
+
+    if (systemMessage) {
+      payload.system_instruction = {
+        parts: [
+          {
+            text:
+              typeof systemMessage.content === "string"
+                ? systemMessage.content
+                : JSON.stringify(systemMessage.content),
+          },
+        ],
+      };
+    }
+
+    const response = await fetchWithBackoff(resolveApiUrl(model), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(
+        `Gemini invoke failed: ${response.status} ${response.statusText} – ${errorText}`
+      );
+    }
+
+    const result = await response.json();
+    const text = result.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+    return {
+      id: `gemini-${Date.now()}`,
+      created: Math.floor(Date.now() / 1000),
+      model: model,
+      choices: [
+        {
+          index: 0,
+          message: {
+            role: "assistant",
+            content: text,
+          },
+          finish_reason: "stop",
+        },
+      ],
+    };
+  }
 
   const payload: Record<string, unknown> = {
     messages: messages.map(normalizeMessage),

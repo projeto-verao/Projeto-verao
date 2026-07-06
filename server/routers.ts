@@ -124,24 +124,26 @@ Crie um plano estruturado com:
 4. Dicas de aquecimento e alongamento
 5. Orientações gerais de progressão
 
-Formate a resposta de forma clara e organizada.`;
+Formate a resposta de forma clara e organizada usando Markdown.`;
 
-      const response = await invokeLLM({
-        messages: [
-          { role: "system", content: "Você é um personal trainer especializado em criar planos de treino personalizados. Responda sempre em português do Brasil." },
-          { role: "user", content: prompt },
-        ],
-      });
+      try {
+        const response = await invokeLLM({
+          model: "gemini-2.5-flash",
+          messages: [
+            { role: "system", content: "Você é um personal trainer especializado em criar planos de treino personalizados. Responda sempre em português do Brasil." },
+            { role: "user", content: prompt },
+          ],
+        });
 
-      const content = response.choices[0].message.content as string;
-      const title = `Treino Personalizado — ${profile.goal || "Geral"}`;
+        const content = response.choices[0].message.content as string;
+        const title = `Treino Personalizado — ${profile.goal || "Geral"}`;
 
-      const workout = await createWorkout({
-        userId: ctx.user.id,
-        title,
-        content,
-        isActive: true,
-      });
+        const workout = await createWorkout({
+          userId: ctx.user.id,
+          title,
+          content,
+          isActive: true,
+        });
 
       // Save version
       const versions = await getWorkoutVersions(ctx.user.id);
@@ -155,6 +157,10 @@ Formate a resposta de forma clara e organizada.`;
       });
 
       return workout;
+      } catch (error) {
+        console.error("Erro ao gerar treino com Gemini:", error);
+        throw new Error("Não conseguimos gerar seu treino agora devido a uma falha na comunicação com o especialista de IA. Por favor, verifique sua conexão ou tente novamente em alguns instantes.");
+      }
     }),
 
     complete: protectedProcedure
@@ -255,6 +261,7 @@ Você pode ajudar com: exercícios, técnicas, nutrição básica, motivação e
         messages.push({ role: "user", content: input.message });
 
         const response = await invokeLLM({
+          model: "gemini-2.5-flash",
           messages: [
             { role: "system", content: systemPrompt },
             ...messages,
@@ -274,6 +281,7 @@ Você pode ajudar com: exercícios, técnicas, nutrição básica, motivação e
         const isModification = modificationKeywords.some(k => input.message.toLowerCase().includes(k));
         if (isModification && activeWorkout) {
           const updateResponse = await invokeLLM({
+            model: "gemini-2.5-flash",
             messages: [
               { role: "system", content: "Você é um personal trainer. Baseado na conversa, atualize o plano de treino incorporando as mudanças solicitadas. Mantenha o formato estruturado original." },
               { role: "user", content: `Treino atual:\n${activeWorkout.content}\n\nSolicitação do usuário: ${input.message}\n\nGere o treino atualizado completo:` },
