@@ -1,42 +1,48 @@
-import { Toaster } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { Switch, Route } from "wouter";
+import { Toaster } from "sonner";
+import { ThemeProvider } from "@/contexts/ThemeContext";
+import ErrorBoundary from "@/components/ErrorBoundary";
+
+import Home from "@/pages/Home";
+import Login from "@/pages/Login";
+import Onboarding from "@/pages/Onboarding";
+import Dashboard from "@/pages/Dashboard";
+import IATrainer from "@/pages/IATrainer";
+import Nutrition from "@/pages/Nutrition";
+import Goals from "@/pages/Goals";
+import History from "@/pages/History";
+import Profile from "@/pages/Profile";
 import NotFound from "@/pages/NotFound";
-import { Route, Switch } from "wouter";
-import ErrorBoundary from "./components/ErrorBoundary";
-import { ThemeProvider } from "./contexts/ThemeContext";
-import Home from "./pages/Home";
 
-function Router() {
-  // make sure to consider if you need authentication for certain routes
+export default function App() {
   return (
-    <Switch>
-      <Route path={"/"} component={Home} />
-      <Route path={"/404"} component={NotFound} />
-      {/* Final fallback route */}
-      <Route component={NotFound} />
-    </Switch>
+    <ThemeProvider defaultTheme="light">
+      <ErrorBoundary>
+        <Switch>
+          <Route path="/" component={Home} />
+          <Route path="/login" component={Login} />
+          <Route path="/onboarding" component={Onboarding} />
+          <Route path="/dashboard" component={Dashboard} />
+          <Route path="/trainer" component={IATrainer} />
+          <Route path="/nutrition" component={Nutrition} />
+          <Route path="/goals" component={Goals} />
+          <Route path="/history" component={History} />
+          <Route path="/profile" component={Profile} />
+          <Route component={NotFound} />
+        </Switch>
+        <Toaster
+          position="top-center"
+          toastOptions={{
+            style: {
+              background: "white",
+              color: "#111",
+              border: "1px solid #e5e7eb",
+              borderRadius: "10px",
+              fontSize: "14px",
+            },
+          }}
+        />
+      </ErrorBoundary>
+    </ThemeProvider>
   );
 }
-
-// NOTE: About Theme
-// - First choose a default theme according to your design style (dark or light bg), than change color palette in index.css
-//   to keep consistent foreground/background color across components
-// - If you want to make theme switchable, pass `switchable` ThemeProvider and use `useTheme` hook
-
-function App() {
-  return (
-    <ErrorBoundary>
-      <ThemeProvider
-        defaultTheme="light"
-        // switchable
-      >
-        <TooltipProvider>
-          <Toaster />
-          <Router />
-        </TooltipProvider>
-      </ThemeProvider>
-    </ErrorBoundary>
-  );
-}
-
-export default App;
