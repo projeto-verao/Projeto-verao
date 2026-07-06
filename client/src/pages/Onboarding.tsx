@@ -83,12 +83,14 @@ export default function Onboarding() {
     const base64 = await resizeImage(file, 512, 0.85);
     setProfilePhotoPreview(`data:image/jpeg;base64,${base64}`);
     setProfilePhotoBase64(base64);
+    toast.success("Foto de perfil selecionada!");
   };
 
   const handleEvalPhotoSelect = async (file: File) => {
     const base64 = await resizeImage(file, 1024, 0.85);
     setEvalPhotoPreview(`data:image/jpeg;base64,${base64}`);
     setEvalPhotoBase64(base64);
+    toast.success("Foto de avaliação selecionada!");
   };
 
   // ── Submit ────────────────────────────────────────────────────────────────
@@ -104,16 +106,20 @@ export default function Onboarding() {
       let photoUrl: string | undefined;
       let photoKey: string | undefined;
       if (profilePhotoBase64) {
+        toast.info("Enviando foto de perfil...");
         const uploaded = await uploadPhoto.mutateAsync({ base64: profilePhotoBase64 });
         photoUrl = uploaded.url;
         photoKey = uploaded.key;
+        toast.success("Foto de perfil enviada!");
       }
 
       // 2. Upload da foto de avaliação (opcional)
       let evalPhotoUrl: string | undefined;
       if (evalPhotoBase64) {
+        toast.info("Enviando foto de avaliação...");
         const uploadedEval = await uploadPhoto.mutateAsync({ base64: evalPhotoBase64 });
         evalPhotoUrl = uploadedEval.url;
+        toast.success("Foto de avaliação enviada!");
       }
 
       // 3. Salvar perfil
@@ -135,6 +141,7 @@ export default function Onboarding() {
         photoUrl,
         photoKey,
       });
+      toast.success("Perfil salvo com sucesso!");
 
       // 4. Ir para tela de processamento passando a foto de avaliação
       navigate(`/processing${evalPhotoUrl ? `?evalPhoto=${encodeURIComponent(evalPhotoUrl)}` : ""}`);
