@@ -1,0 +1,53 @@
+// Firestore Security Rules
+// Copie e cole estas regras no Firebase Console > Firestore > Rules
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Função auxiliar para verificar autenticação
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Função para verificar se o usuário é o dono do documento
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Coleção users
+    match /users/{userId} {
+      // Usuários só podem ler/escrever seus próprios dados
+      allow read, write: if isOwner(userId);
+
+      // Subcoleções do usuário
+      match /workouts/{document=**} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /bodyProgress/{document=**} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /completions/{document=**} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /chatHistory/{document=**} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /meals/{document=**} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /goals/{document=**} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    // Negar acesso a qualquer outra coisa
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
