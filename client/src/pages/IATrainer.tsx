@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
-import { useAuth } from "@/_core/hooks/useAuth";
+import { useAuth } from "@/contexts/AuthContext";
 import AppLayout from "@/components/AppLayout";
 import { ArrowLeft, Send, Loader2, Camera, Upload, User, ChevronDown, RotateCcw, Sparkles } from "lucide-react";
 import { useLocation } from "wouter";
@@ -14,15 +14,15 @@ const LEVELS = ["Iniciante", "Intermediário", "Avançado"] as const;
 
 export default function IATrainer() {
   const [, navigate] = useLocation();
-  const { isAuthenticated, loading: authLoading } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
 
   // Redireciona para login se não autenticado
   useEffect(() => {
-    if (authLoading) return;
+    if (loading) return;
     if (!isAuthenticated) {
       navigate("/login");
     }
-  }, [isAuthenticated, authLoading, navigate]);
+  }, [isAuthenticated, loading, navigate]);
   const [activeTab, setActiveTab] = useState<Tab>("chat");
   const [message, setMessage] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);

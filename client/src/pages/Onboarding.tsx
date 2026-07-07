@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
-import { useAuth } from "@/_core/hooks/useAuth";
+import { useAuth } from "@/contexts/AuthContext";
 import { trpc } from "@/lib/trpc";
 import { Sparkles, Camera, Upload, User, ChevronDown, Loader2, ShieldCheck, ScanFace } from "lucide-react";
 import { toast } from "sonner";
@@ -38,15 +38,15 @@ function resizeImage(file: File, maxSize: number, quality: number): Promise<stri
 
 export default function Onboarding() {
   const [, navigate] = useLocation();
-  const { isAuthenticated, loading: authLoading } = useAuth();
+  const { isAuthenticated, loading, user, updateProfile } = useAuth();
 
   // Redireciona para login se não autenticado
   useEffect(() => {
-    if (authLoading) return;
+    if (loading) return;
     if (!isAuthenticated) {
       navigate("/login");
     }
-  }, [isAuthenticated, authLoading, navigate]);
+  }, [isAuthenticated, loading, navigate]);
 
   // ── Refs para inputs de arquivo ───────────────────────────────────────────
   const profileFileRef    = useRef<HTMLInputElement>(null);
@@ -85,6 +85,7 @@ export default function Onboarding() {
   const saveProfile    = trpc.profile.save.useMutation();
   const uploadPhoto    = trpc.profile.uploadPhoto.useMutation();
   const generateWorkout = trpc.workout.generateWithPhoto.useMutation();
+  // updateProfile do Firebase Auth Context (salva no Firestore)
 
   const set = (field: string, value: string) => setForm(f => ({ ...f, [field]: value }));
 
@@ -132,7 +133,20 @@ export default function Onboarding() {
         toast.success("Foto de avaliação enviada!");
       }
 
-      // 3. Salvar perfil
+      // 3a. Salvar dados adicionais no Firestore (Firebase)
+      await updateProfile({
+        name: form.name,
+        age: parseInt(form.age),
+        sex: form.sex,
+        heightCm: parseFloat(form.heightCm),
+        weightKg: parseFloat(form.weightKg),
+        targetWeightKg: form.targetWeightKg ? parseFloat(form.targetWeightKg) : undefined,
+        goal: form.goal,
+        experienceLevel: form.experienceLevel,
+        photoUrl,
+      });
+
+      // 3b. Salvar perfil no backend (tRPC/SQL) para compatibilidade com IA
       await saveProfile.mutateAsync({
         name: form.name,
         age: parseInt(form.age),

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
-import { useAuth } from "@/_core/hooks/useAuth";
+import { useAuth } from "@/contexts/AuthContext";
 import AppLayout from "@/components/AppLayout";
 import { ArrowLeft, Droplets, Plus, Camera, Upload, Loader2, Sparkles, BarChart3 } from "lucide-react";
 import { useLocation } from "wouter";
@@ -13,15 +13,15 @@ const MEAL_TYPES = ["Café da manhã", "Lanche da manhã", "Almoço", "Lanche da
 
 export default function Nutrition() {
   const [, navigate] = useLocation();
-  const { isAuthenticated, loading: authLoading } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
 
   // Redireciona para login se não autenticado
   useEffect(() => {
-    if (authLoading) return;
+    if (loading) return;
     if (!isAuthenticated) {
       navigate("/login");
     }
-  }, [isAuthenticated, authLoading, navigate]);
+  }, [isAuthenticated, loading, navigate]);
   const [activeTab, setActiveTab] = useState<Tab>("diario");
   const [mealDescription, setMealDescription] = useState("");
   const [mealType, setMealType] = useState(MEAL_TYPES[0]);

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
-import { useAuth } from "@/_core/hooks/useAuth";
+import { useAuth } from "@/contexts/AuthContext";
 import AppLayout from "@/components/AppLayout";
 import { ArrowLeft, Target, Loader2 } from "lucide-react";
 import { useLocation } from "wouter";
@@ -8,15 +8,15 @@ import { toast } from "sonner";
 
 export default function Goals() {
   const [, navigate] = useLocation();
-  const { isAuthenticated, loading: authLoading } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
 
   // Redireciona para login se não autenticado
   useEffect(() => {
-    if (authLoading) return;
+    if (loading) return;
     if (!isAuthenticated) {
       navigate("/login");
     }
-  }, [isAuthenticated, authLoading, navigate]);
+  }, [isAuthenticated, loading, navigate]);
   const { data: goals, refetch } = trpc.goals.get.useQuery();
   const saveGoals = trpc.goals.save.useMutation({
     onSuccess: () => { toast.success("Meta salva!"); refetch(); },

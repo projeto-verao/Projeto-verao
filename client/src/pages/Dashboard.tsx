@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
-import { useAuth } from "@/_core/hooks/useAuth";
+import { useAuth } from "@/contexts/AuthContext";
 import AppLayout from "@/components/AppLayout";
 import {
   Utensils, Target, History, RefreshCw, CheckCircle2, Dumbbell, Loader2, ChevronRight, Timer, X
@@ -10,16 +10,16 @@ import { toast } from "sonner";
 import { Streamdown } from "streamdown";
 
 export default function Dashboard() {
-  const { user, isAuthenticated, loading: authLoading } = useAuth();
+  const { user, isAuthenticated, loading } = useAuth();
   const [, navigate] = useLocation();
 
   // Redireciona para login se não autenticado
   useEffect(() => {
-    if (authLoading) return;
+    if (loading) return;
     if (!isAuthenticated) {
       navigate("/login");
     }
-  }, [isAuthenticated, authLoading, navigate]);
+  }, [isAuthenticated, loading, navigate]);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [completedSets, setCompletedSets] = useState<Record<string, boolean>>({});
   const [restTimer, setRestTimer] = useState<{ seconds: number; isActive: boolean } | null>(null);

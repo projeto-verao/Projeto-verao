@@ -1,21 +1,15 @@
 import { useEffect } from "react";
 import { useLocation } from "wouter";
-import { useAuth } from "@/_core/hooks/useAuth";
-import { trpc } from "@/lib/trpc";
+import { useAuth } from "@/contexts/AuthContext";
 import { Dumbbell } from "lucide-react";
 
 export default function Home() {
-  const { isAuthenticated, loading: authLoading } = useAuth();
+  const { isAuthenticated, loading, profile } = useAuth();
   const [, navigate] = useLocation();
-
-  const { data: profile, isLoading: profileLoading } = trpc.profile.get.useQuery(undefined, {
-    enabled: isAuthenticated,
-    retry: false,
-  });
 
   useEffect(() => {
     // Aguardar carregamento de autenticação
-    if (authLoading) return;
+    if (loading) return;
 
     // Se não autenticado, ir para login
     if (!isAuthenticated) {
@@ -23,17 +17,14 @@ export default function Home() {
       return;
     }
 
-    // Se autenticado, aguardar perfil
-    if (profileLoading) return;
-
-    // Se tem perfil, ir para dashboard
-    if (profile) {
+    // Se autenticado e tem perfil completo, ir para dashboard
+    if (profile && profile.goal) {
       navigate("/dashboard");
     } else {
-      // Após login, se não tiver perfil, vai para Welcome
+      // Após login, se não tiver perfil completo, vai para Welcome
       navigate("/welcome");
     }
-  }, [isAuthenticated, authLoading, profile, profileLoading, navigate]);
+  }, [isAuthenticated, loading, profile, navigate]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-white">

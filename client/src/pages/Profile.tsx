@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
-import { useAuth } from "@/_core/hooks/useAuth";
+import { useAuth } from "@/contexts/AuthContext";
 import AppLayout from "@/components/AppLayout";
 import {
   User, Camera, Upload, LogOut, ChevronRight, Dumbbell,
@@ -10,16 +10,16 @@ import {
 import { toast } from "sonner";
 
 export default function Profile() {
-  const { user, isAuthenticated, loading: authLoading } = useAuth();
+  const { user, profile: firebaseProfile, isAuthenticated, loading } = useAuth();
   const [, navigate] = useLocation();
 
   // Redireciona para login se não autenticado
   useEffect(() => {
-    if (authLoading) return;
+    if (loading) return;
     if (!isAuthenticated) {
       navigate("/login");
     }
-  }, [isAuthenticated, authLoading, navigate]);
+  }, [isAuthenticated, loading, navigate]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -115,8 +115,8 @@ export default function Profile() {
                 <User size={32} />
               </div>
               <div>
-                <p className="font-semibold text-lg">{user?.name || "Usuário"}</p>
-                <p className="text-sm text-white/60">{user?.email}</p>
+                <p className="font-semibold text-lg">{firebaseProfile?.name || user?.displayName || "Usuário"}</p>
+                <p className="text-sm text-white/60">{firebaseProfile?.email || user?.email}</p>
               </div>
             </div>
             <button
