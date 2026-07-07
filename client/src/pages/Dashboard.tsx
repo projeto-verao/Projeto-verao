@@ -4,7 +4,7 @@ import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/contexts/AuthContext";
 import AppLayout from "@/components/AppLayout";
 import {
-  Utensils, Target, RefreshCw, Dumbbell, Loader2, ChevronRight, Timer, X, AlertTriangle, Sparkles
+  Utensils, Target, RefreshCw, Dumbbell, Loader2, ChevronRight, Timer, X, AlertTriangle, Sparkles, Activity
 } from "lucide-react";
 import { toast } from "sonner";
 

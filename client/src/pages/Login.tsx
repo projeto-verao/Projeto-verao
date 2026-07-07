@@ -40,6 +40,7 @@ export default function Login() {
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log("[handleSignup] Iniciando com email:", email);
     if (!name.trim()) {
       toast.error("Digite seu nome");
       return;
@@ -57,7 +58,9 @@ export default function Login() {
       return;
     }
     try {
+      console.log("[handleSignup] Chamando register...");
       await register(email, password, name);
+      console.log("[handleSignup] Register concluído");
       toast.success("Conta criada com sucesso! Bem-vindo ao Projeto Verão!");
       navigate("/welcome");
     } catch (err) {

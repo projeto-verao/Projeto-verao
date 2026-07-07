@@ -20,9 +20,21 @@ export async function setupVite(app: Express, server: Server) {
     appType: "custom",
   });
 
-  app.use(vite.middlewares);
+  // Usar padrão específico para não interceptar /api/
+  app.use((req, res, next) => {
+    if (req.path.startsWith("/api/")) {
+      return next();
+    }
+    vite.middlewares(req, res, next);
+  });
+
   app.use("*", async (req, res, next) => {
     const url = req.originalUrl;
+    
+    // Não interceptar rotas de API
+    if (url.startsWith("/api/")) {
+      return next();
+    }
 
     try {
       const clientTemplate = path.resolve(

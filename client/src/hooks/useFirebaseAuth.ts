@@ -82,8 +82,11 @@ export function useFirebaseAuth() {
   const register = async (email: string, password: string, name: string) => {
     try {
       setLoading(true);
+      console.log("[register] Iniciando com email:", email);
       const result = await createUserWithEmailAndPassword(auth, email, password);
+      console.log("[register] Usuario criado com uid:", result.user.uid);
       await updateFirebaseProfile(result.user, { displayName: name });
+      console.log("[register] Perfil atualizado");
       
       const newProfile = {
         uid: result.user.uid,
@@ -93,8 +96,39 @@ export function useFirebaseAuth() {
         updatedAt: serverTimestamp(),
       };
       
+      console.log("[register] Salvando no Firestore...");
       await setDoc(doc(db, "users", result.user.uid), newProfile, { merge: true });
+      console.log("[register] Firestore salvo");
       setProfile(newProfile as any);
+      console.log("[register] Perfil setado");
+      
+      // Criar sessao de backend
+      const idToken = await result.user.getIdToken();
+      console.log("[useFirebaseAuth] Chamando /api/auth/firebase com uid:", result.user.uid);
+      const authResponse = await fetch("/api/auth/firebase", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          idToken,
+          uid: result.user.uid,
+          email: result.user.email,
+          name: result.user.displayName,
+        }),
+      });
+      console.log("[useFirebaseAuth] Response status:", authResponse.status);
+      if (!authResponse.ok) {
+        const errorData = await authResponse.json();
+        console.error("[useFirebaseAuth] Erro na autenticação:", errorData);
+      } else {
+        const data = await authResponse.json();
+        console.log("[useFirebaseAuth] Autenticação bem-sucedida:", data);
+        if (data.token) {
+          localStorage.setItem("auth_token", data.token);
+          console.log("[useFirebaseAuth] Token armazenado no localStorage");
+        }
+      }
+      
       return result.user;
     } catch (err) {
       const errorMsg = translateFirebaseError(err);
@@ -109,6 +143,34 @@ export function useFirebaseAuth() {
     try {
       setLoading(true);
       const result = await signInWithEmailAndPassword(auth, email, password);
+      
+      // Criar sessao de backend
+      const idToken = await result.user.getIdToken();
+      console.log("[useFirebaseAuth] Chamando /api/auth/firebase com uid:", result.user.uid);
+      const authResponse = await fetch("/api/auth/firebase", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          idToken,
+          uid: result.user.uid,
+          email: result.user.email,
+          name: result.user.displayName,
+        }),
+      });
+      console.log("[useFirebaseAuth] Response status:", authResponse.status);
+      if (!authResponse.ok) {
+        const errorData = await authResponse.json();
+        console.error("[useFirebaseAuth] Erro na autenticação:", errorData);
+      } else {
+        const data = await authResponse.json();
+        console.log("[useFirebaseAuth] Autenticação bem-sucedida:", data);
+        if (data.token) {
+          localStorage.setItem("auth_token", data.token);
+          console.log("[useFirebaseAuth] Token armazenado no localStorage");
+        }
+      }
+      
       return result.user;
     } catch (err) {
       const errorMsg = translateFirebaseError(err);
@@ -122,6 +184,7 @@ export function useFirebaseAuth() {
   const logout = async () => {
     try {
       setLoading(true);
+      localStorage.removeItem("auth_token");
       await signOut(auth);
       setUser(null);
       setProfile(null);

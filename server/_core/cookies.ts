@@ -39,10 +39,18 @@ export function getSessionCookieOptions(
   //       ? hostname
   //       : undefined;
 
+  const hostname = req.hostname;
+  const isLocalhost = LOCAL_HOSTS.has(hostname) || isIpAddress(hostname);
+  const isSecure = isSecureRequest(req);
+  
+  // Para localhost/127.0.0.1, usar sameSite: lax com secure: false
+  // Para producao, usar sameSite: none com secure: true
+  const sameSite = isLocalhost || !isSecure ? "lax" : "none";
+  
   return {
     httpOnly: true,
     path: "/",
-    sameSite: "none",
-    secure: isSecureRequest(req),
+    sameSite: sameSite as any,
+    secure: isSecure,
   };
 }
