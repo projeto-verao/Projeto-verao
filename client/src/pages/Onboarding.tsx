@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
-import { trpc } from "@/lib/trpc";
 import { Sparkles, Camera, Upload, User, ChevronDown, Loader2, ShieldCheck, ScanFace } from "lucide-react";
 import { toast } from "sonner";
 
@@ -38,7 +37,7 @@ function resizeImage(file: File, maxSize: number, quality: number): Promise<stri
 
 export default function Onboarding() {
   const [, navigate] = useLocation();
-  const { isAuthenticated, loading, user, updateProfile } = useAuth();
+  const { isAuthenticated, loading, updateProfile } = useAuth();
 
   // Redireciona para login se não autenticado
   useEffect(() => {
@@ -82,11 +81,6 @@ export default function Onboarding() {
 
   const [isGenerating, setIsGenerating] = useState(false);
 
-  const saveProfile    = trpc.profile.save.useMutation();
-  const uploadPhoto    = trpc.profile.uploadPhoto.useMutation();
-  const generateWorkout = trpc.workout.generateWithPhoto.useMutation();
-  // updateProfile do Firebase Auth Context (salva no Firestore)
-
   const set = (field: string, value: string) => setForm(f => ({ ...f, [field]: value }));
 
   // ── Handlers de seleção de foto ───────────────────────────────────────────
@@ -113,41 +107,11 @@ export default function Onboarding() {
 
     setIsGenerating(true);
     try {
-      // 1. Upload da foto de perfil (opcional)
-      let photoUrl: string | undefined;
-      let photoKey: string | undefined;
-      if (profilePhotoBase64) {
-        toast.info("Enviando foto de perfil...");
-        const uploaded = await uploadPhoto.mutateAsync({ base64: profilePhotoBase64 });
-        photoUrl = uploaded.url;
-        photoKey = uploaded.key;
-        toast.success("Foto de perfil enviada!");
-      }
-
-      // 2. Upload da foto de avaliação (opcional)
-      let evalPhotoUrl: string | undefined;
-      if (evalPhotoBase64) {
-        toast.info("Enviando foto de avaliação...");
-        const uploadedEval = await uploadPhoto.mutateAsync({ base64: evalPhotoBase64 });
-        evalPhotoUrl = uploadedEval.url;
-        toast.success("Foto de avaliação enviada!");
-      }
-
-      // 3a. Salvar dados adicionais no Firestore (Firebase)
+      // Nota: Upload de fotos via tRPC removido para garantir independência total do Manus
+      // Em uma etapa futura, o upload deve ser feito diretamente para o Firebase Storage
+      
+      // 1. Salvar dados no Firestore (Firebase) - Única fonte de verdade agora
       await updateProfile({
-        name: form.name,
-        age: parseInt(form.age),
-        sex: form.sex,
-        heightCm: parseFloat(form.heightCm),
-        weightKg: parseFloat(form.weightKg),
-        targetWeightKg: form.targetWeightKg ? parseFloat(form.targetWeightKg) : undefined,
-        goal: form.goal,
-        experienceLevel: form.experienceLevel,
-        photoUrl,
-      });
-
-      // 3b. Salvar perfil no backend (tRPC/SQL) para compatibilidade com IA
-      await saveProfile.mutateAsync({
         name: form.name,
         age: parseInt(form.age),
         sex: form.sex,
@@ -162,16 +126,18 @@ export default function Onboarding() {
         physicalRestrictions: form.physicalRestrictions || undefined,
         preferredExercises: form.preferredExercises || undefined,
         avoidedExercises: form.avoidedExercises || undefined,
-        photoUrl,
-        photoKey,
+        // photoUrl e evalPhotoUrl seriam salvos aqui se usássemos Firebase Storage
       });
+
       toast.success("Perfil salvo com sucesso!");
 
-      // 4. Ir para tela de processamento passando a foto de avaliação
-      navigate(`/processing${evalPhotoUrl ? `?evalPhoto=${encodeURIComponent(evalPhotoUrl)}` : ""}`);
+      // 2. Ir para o Dashboard (ou tela de processamento se a IA for migrada)
+      // Como a IA ainda depende do backend Manus, redirecionamos para o Dashboard
+      // Onde o usuário poderá ver seu perfil carregado do Firestore
+      navigate("/dashboard");
     } catch (err) {
-      console.error(err);
-      toast.error("Erro ao salvar perfil. Tente novamente.");
+      console.error("Erro detalhado ao salvar perfil:", err);
+      toast.error("Erro ao salvar perfil no Firebase. Verifique sua conexão.");
       setIsGenerating(false);
     }
   };
@@ -249,7 +215,7 @@ export default function Onboarding() {
               shape="circle"
             />
             
-            <div className="flex items-center justify-center gap-1.5 mt-4 pt-3 border-t border-gray-50">
+            <div className="flex items-center justify-center gap-1.5 mt-4 pt-3 border-t border-gray-0">
               <ShieldCheck size={13} className="text-green-500 flex-shrink-0" />
               <p className="text-[11px] text-gray-400 font-medium">Essa foto não será utilizada para análise da IA.</p>
             </div>
@@ -277,8 +243,8 @@ export default function Onboarding() {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Sexo</label>
             <div className="relative">
-              <select className="app-input appearance-none pr-8" value={form.sex} onChange={e => set("sex", e.target.value)}>
-                {SEX_OPTIONS.map(o => <option key={o}>{o}</option>)}
+              <select className="app-input appearance-none pr-8" value={form.sex} onChange={e => set("sex", e.target.value as typeof SEX_OPTIONS[number])}>
+                {SEX_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
               </select>
               <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             </div>
@@ -308,7 +274,7 @@ export default function Onboarding() {
           <label className="block text-sm font-medium text-gray-700 mb-1.5">Objetivo principal</label>
           <div className="relative">
             <select className="app-input appearance-none pr-8" value={form.goal} onChange={e => set("goal", e.target.value)}>
-              {GOALS.map(g => <option key={g}>{g}</option>)}
+              {GOALS.map(g => <option key={g} value={g}>{g}</option>)}
             </select>
             <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>
@@ -319,7 +285,7 @@ export default function Onboarding() {
           <label className="block text-sm font-medium text-gray-700 mb-1.5">Nível de experiência</label>
           <div className="relative">
             <select className="app-input appearance-none pr-8" value={form.experienceLevel} onChange={e => set("experienceLevel", e.target.value as typeof LEVELS[number])}>
-              {LEVELS.map(l => <option key={l}>{l}</option>)}
+              {LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
             </select>
             <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>
@@ -342,7 +308,7 @@ export default function Onboarding() {
           <label className="block text-sm font-medium text-gray-700 mb-1.5">Tipo de academia</label>
           <div className="relative">
             <select className="app-input appearance-none pr-8" value={form.gymType} onChange={e => set("gymType", e.target.value)}>
-              {GYM_TYPES.map(g => <option key={g}>{g}</option>)}
+              {GYM_TYPES.map(g => <option key={g} value={g}>{g}</option>)}
             </select>
             <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>

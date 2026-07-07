@@ -1,5 +1,9 @@
 {
+  "firestore": {
+    "rules": "firestore.rules"
+  },
   "hosting": {
+    "site": "projeto-verao-3a6a1",
     "public": "dist/public",
     "ignore": [
       "firebase.json",
