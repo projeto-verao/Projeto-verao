@@ -14,16 +14,23 @@ export default function Home() {
   });
 
   useEffect(() => {
-    if (authLoading || (isAuthenticated && profileLoading)) return;
+    // Aguardar carregamento de autenticação
+    if (authLoading) return;
 
+    // Se não autenticado, ir para login
     if (!isAuthenticated) {
       navigate("/login");
       return;
     }
 
+    // Se autenticado, aguardar perfil
+    if (profileLoading) return;
+
+    // Se tem perfil, ir para dashboard
     if (profile) {
       navigate("/dashboard");
     } else {
+      // Após login, se não tiver perfil, vai para Welcome
       navigate("/welcome");
     }
   }, [isAuthenticated, authLoading, profile, profileLoading, navigate]);

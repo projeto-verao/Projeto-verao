@@ -16,19 +16,8 @@ export async function createContext(
   try {
     user = await sdk.authenticateRequest(opts.req);
   } catch (error) {
-    // For preview purposes, we bypass authentication if it fails
-    // This allows testing the AI trainer without a real OAuth setup
-    user = {
-      id: 1,
-      openId: "test-open-id",
-      email: "teste@projetoverao.com",
-      name: "Usuário de Teste",
-      loginMethod: "preview",
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      lastSignedIn: new Date(),
-      role: "user",
-    } as User;
+    // Authentication failed, user remains null
+    console.error("Authentication error:", error);
   }
 
   return {

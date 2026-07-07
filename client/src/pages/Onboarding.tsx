@@ -1,5 +1,6 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
+import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { Sparkles, Camera, Upload, User, ChevronDown, Loader2, ShieldCheck, ScanFace } from "lucide-react";
 import { toast } from "sonner";
@@ -37,6 +38,15 @@ function resizeImage(file: File, maxSize: number, quality: number): Promise<stri
 
 export default function Onboarding() {
   const [, navigate] = useLocation();
+  const { isAuthenticated, loading: authLoading } = useAuth();
+
+  // Redireciona para login se não autenticado
+  useEffect(() => {
+    if (authLoading) return;
+    if (!isAuthenticated) {
+      navigate("/login");
+    }
+  }, [isAuthenticated, authLoading, navigate]);
 
   // ── Refs para inputs de arquivo ───────────────────────────────────────────
   const profileFileRef    = useRef<HTMLInputElement>(null);
@@ -83,12 +93,14 @@ export default function Onboarding() {
     const base64 = await resizeImage(file, 512, 0.85);
     setProfilePhotoPreview(`data:image/jpeg;base64,${base64}`);
     setProfilePhotoBase64(base64);
+    toast.success("Foto de perfil selecionada!");
   };
 
   const handleEvalPhotoSelect = async (file: File) => {
     const base64 = await resizeImage(file, 1024, 0.85);
     setEvalPhotoPreview(`data:image/jpeg;base64,${base64}`);
     setEvalPhotoBase64(base64);
+    toast.success("Foto de avaliação selecionada!");
   };
 
   // ── Submit ────────────────────────────────────────────────────────────────
@@ -104,16 +116,20 @@ export default function Onboarding() {
       let photoUrl: string | undefined;
       let photoKey: string | undefined;
       if (profilePhotoBase64) {
+        toast.info("Enviando foto de perfil...");
         const uploaded = await uploadPhoto.mutateAsync({ base64: profilePhotoBase64 });
         photoUrl = uploaded.url;
         photoKey = uploaded.key;
+        toast.success("Foto de perfil enviada!");
       }
 
       // 2. Upload da foto de avaliação (opcional)
       let evalPhotoUrl: string | undefined;
       if (evalPhotoBase64) {
+        toast.info("Enviando foto de avaliação...");
         const uploadedEval = await uploadPhoto.mutateAsync({ base64: evalPhotoBase64 });
         evalPhotoUrl = uploadedEval.url;
+        toast.success("Foto de avaliação enviada!");
       }
 
       // 3. Salvar perfil
@@ -135,6 +151,7 @@ export default function Onboarding() {
         photoUrl,
         photoKey,
       });
+      toast.success("Perfil salvo com sucesso!");
 
       // 4. Ir para tela de processamento passando a foto de avaliação
       navigate(`/processing${evalPhotoUrl ? `?evalPhoto=${encodeURIComponent(evalPhotoUrl)}` : ""}`);
@@ -195,26 +212,33 @@ export default function Onboarding() {
       <div className="px-5 space-y-5">
 
         {/* ── SEÇÃO: FOTO DE PERFIL ─────────────────────────────────────────── */}
-        <div className="app-card space-y-3">
-          <div className="flex items-center gap-2 mb-1">
-            <div className="w-7 h-7 bg-black rounded-lg flex items-center justify-center">
-              <User size={14} color="white" />
+        <div className="app-card space-y-4 border-none shadow-sm bg-gray-50/50">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 bg-black rounded-xl flex items-center justify-center shadow-sm">
+              <User size={16} color="white" />
             </div>
-            <h2 className="text-base font-bold text-gray-900">Foto de Perfil</h2>
+            <div>
+              <h2 className="text-base font-bold text-gray-900">Foto de Perfil</h2>
+              <p className="text-[11px] text-gray-500">Opcional</p>
+            </div>
           </div>
-          <p className="text-xs text-gray-500 leading-relaxed">
-            Esta foto será utilizada apenas como sua imagem de perfil dentro do aplicativo.
-            <span className="font-medium text-gray-600"> Essa foto não será utilizada para análise da IA.</span>
-          </p>
-          <PhotoButtons
-            preview={profilePhotoPreview}
-            onCamera={() => profileCameraRef.current?.click()}
-            onGallery={() => profileFileRef.current?.click()}
-            shape="circle"
-          />
-          <div className="flex items-center gap-1.5 mt-1">
-            <ShieldCheck size={13} className="text-green-500 flex-shrink-0" />
-            <p className="text-[11px] text-gray-400">Uso exclusivo como foto de identificação</p>
+          
+          <div className="bg-white p-4 rounded-2xl border border-gray-100">
+            <p className="text-xs text-gray-600 mb-4 leading-relaxed">
+              Esta foto será utilizada apenas como sua imagem de perfil dentro do aplicativo.
+            </p>
+            
+            <PhotoButtons
+              preview={profilePhotoPreview}
+              onCamera={() => profileCameraRef.current?.click()}
+              onGallery={() => profileFileRef.current?.click()}
+              shape="circle"
+            />
+            
+            <div className="flex items-center justify-center gap-1.5 mt-4 pt-3 border-t border-gray-50">
+              <ShieldCheck size={13} className="text-green-500 flex-shrink-0" />
+              <p className="text-[11px] text-gray-400 font-medium">Essa foto não será utilizada para análise da IA.</p>
+            </div>
           </div>
         </div>
 
@@ -347,34 +371,38 @@ export default function Onboarding() {
         </div>
 
         {/* ── SEÇÃO: FOTO PARA AVALIAÇÃO FÍSICA ────────────────────────────── */}
-        <div className="app-card space-y-3 border-2" style={{ borderColor: "#FF5F6D22", background: "#fff9f9" }}>
-          <div className="flex items-center gap-2 mb-1">
+        <div className="app-card space-y-4 border-2 border-orange-100 bg-orange-50/30">
+          <div className="flex items-center gap-2.5">
             <div
-              className="w-7 h-7 rounded-lg flex items-center justify-center"
+              className="w-8 h-8 rounded-xl flex items-center justify-center shadow-sm"
               style={{ background: "linear-gradient(135deg, #FF5F6D 0%, #FFC371 100%)" }}
             >
-              <ScanFace size={14} color="white" />
+              <ScanFace size={16} color="white" />
             </div>
-            <h2 className="text-base font-bold text-gray-900">Foto para Avaliação Física</h2>
-            <span className="ml-auto text-[10px] font-semibold text-orange-400 bg-orange-50 px-2 py-0.5 rounded-full">Opcional</span>
+            <div>
+              <h2 className="text-base font-bold text-gray-900">Foto para Avaliação Física</h2>
+              <p className="text-[11px] text-orange-600 font-medium">Recomendado para IA</p>
+            </div>
           </div>
-          <p className="text-xs text-gray-500 leading-relaxed">
-            Envie uma foto de corpo inteiro, de frente, em um ambiente bem iluminado. Essa imagem será utilizada
-            <span className="font-medium text-gray-700"> exclusivamente pela IA</span> para analisar sua composição
-            corporal e criar um treino personalizado com base na sua estrutura física e nas informações preenchidas
-            neste cadastro.
-          </p>
-          <PhotoButtons
-            preview={evalPhotoPreview}
-            onCamera={() => evalCameraRef.current?.click()}
-            onGallery={() => evalFileRef.current?.click()}
-            shape="rect"
-          />
-          <div className="flex items-start gap-1.5 mt-1">
-            <ShieldCheck size={13} className="text-orange-400 flex-shrink-0 mt-0.5" />
-            <p className="text-[11px] text-gray-400 leading-relaxed">
-              Usada exclusivamente para gerar seu primeiro treino e servir como base para futuras comparações de evolução física.
+
+          <div className="bg-white p-4 rounded-2xl border border-orange-50">
+            <p className="text-xs text-gray-600 mb-4 leading-relaxed">
+              Envie uma foto de corpo inteiro, de frente, em um ambiente bem iluminado. Essa imagem será utilizada exclusivamente pela IA para analisar sua composição corporal e criar um treino personalizado com base na sua estrutura física e nas informações preenchidas neste cadastro.
             </p>
+            
+            <PhotoButtons
+              preview={evalPhotoPreview}
+              onCamera={() => evalCameraRef.current?.click()}
+              onGallery={() => evalFileRef.current?.click()}
+              shape="rect"
+            />
+            
+            <div className="flex items-start gap-2 mt-4 pt-3 border-t border-orange-50">
+              <ShieldCheck size={14} className="text-orange-500 flex-shrink-0 mt-0.5" />
+              <p className="text-[11px] text-gray-400 leading-relaxed">
+                Essa imagem será utilizada exclusivamente para gerar seu primeiro treino e servir como base para futuras comparações da evolução física.
+              </p>
+            </div>
           </div>
         </div>
 
