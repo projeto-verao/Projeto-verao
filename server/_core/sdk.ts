@@ -39,8 +39,20 @@ class OAuthService {
   }
 
   private decodeState(state: string): string {
-    const redirectUri = atob(state);
-    return redirectUri;
+    // State is passed as JSON from the frontend containing { origin, returnPath }
+    // We extract the redirect URI from the state
+    try {
+      const parsed = JSON.parse(state);
+      return `${parsed.origin}/api/oauth/callback`;
+    } catch (e) {
+      // Fallback for backward compatibility with base64-encoded state
+      try {
+        return atob(state);
+      } catch {
+        console.error("[OAuth] Failed to decode state as JSON or base64", e);
+        throw new Error("Invalid state format");
+      }
+    }
   }
 
   async getTokenByCode(
