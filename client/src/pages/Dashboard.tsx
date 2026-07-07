@@ -4,7 +4,7 @@ import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/contexts/AuthContext";
 import AppLayout from "@/components/AppLayout";
 import {
-  Utensils, Target, History, RefreshCw, CheckCircle2, Dumbbell, Loader2, ChevronRight, Timer, X, AlertTriangle
+  Utensils, Target, RefreshCw, Dumbbell, Loader2, ChevronRight, Timer, X, AlertTriangle, Sparkles
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -46,16 +46,12 @@ export default function Dashboard() {
 
   const generateWorkout = trpc.workout.generate.useMutation({
     onSuccess: () => {
-      toast.success("Novo treino gerado!");
+      toast.success("Novo treino gerado com sucesso!");
       refetchWorkout();
     },
-    onError: () => toast.error("Erro ao gerar treino no servidor antigo."),
-  });
-
-  const completeWorkout = trpc.workout.complete.useMutation({
-    onSuccess: () => {
-      toast.success("Treino marcado como concluído!");
-      refetchProgress();
+    onError: (err) => {
+      console.error("Erro ao gerar treino:", err);
+      toast.error("Erro ao gerar treino. Tente novamente em instantes.");
     },
   });
 
@@ -71,8 +67,6 @@ export default function Dashboard() {
   } catch (e) {
     workoutData = { title: activeWorkout?.title, content: activeWorkout?.content };
   }
-
-  const nextWorkoutDay = workoutData?.days?.[completed % (workoutData.days.length || 1)];
 
   // Timer Logic
   useEffect(() => {
@@ -95,24 +89,6 @@ export default function Dashboard() {
     if (isNowCompleted) {
       const seconds = parseInt(restTime) || 60;
       setRestTimer({ seconds, isActive: true });
-    }
-  };
-
-  const completeAllSets = (exerciseId: string, numSets: number, restTime: string) => {
-    const newSets = { ...completedSets };
-    let anyNewlyCompleted = false;
-    for (let i = 0; i < numSets; i++) {
-      const key = `${exerciseId}-${i}`;
-      if (!newSets[key]) {
-        newSets[key] = true;
-        anyNewlyCompleted = true;
-      }
-    }
-    if (anyNewlyCompleted) {
-      setCompletedSets(newSets);
-      const seconds = parseInt(restTime) || 60;
-      setRestTimer({ seconds, isActive: true });
-      toast.success("Exercício concluído!");
     }
   };
 
@@ -147,108 +123,125 @@ export default function Dashboard() {
       )}
 
       {/* Header */}
-      <div className="px-5 pt-6 pb-4">
-        <div className="flex items-center justify-between mb-1">
+      <div className="px-5 pt-8 pb-4">
+        <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Olá, {profile?.name?.split(' ')[0] || 'Atleta'}!</h1>
-            <p className="text-sm text-gray-500">Vamos treinar hoje?</p>
+            <h1 className="text-2xl font-black text-gray-900 tracking-tight">OLÁ, {profile?.name?.split(' ')[0]?.toUpperCase() || 'ATLETA'}!</h1>
+            <p className="text-sm text-gray-500 font-medium">Sua rotina de treinos está pronta.</p>
           </div>
-          <div className="flex items-center gap-2">
-            <button onClick={() => navigate("/nutrition")} className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
+          <div className="flex gap-2">
+            <button onClick={() => navigate("/nutrition")} className="w-10 h-10 rounded-2xl bg-gray-100 flex items-center justify-center shadow-sm">
               <Utensils size={18} className="text-gray-600" />
             </button>
-            <button onClick={() => navigate("/goals")} className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
+            <button onClick={() => navigate("/goals")} className="w-10 h-10 rounded-2xl bg-gray-100 flex items-center justify-center shadow-sm">
               <Target size={18} className="text-gray-600" />
             </button>
           </div>
         </div>
       </div>
 
-      <div className="px-5 space-y-4 pb-10">
-        {/* Aviso de Sincronização */}
+      <div className="px-5 space-y-5 pb-24">
+        {/* Sync Alert (Only if there's a real issue) */}
         {(trpcProfileError || trpcWorkoutError) && (
-          <div className="bg-orange-50 border border-orange-100 p-4 rounded-2xl flex items-start gap-3">
+          <div className="bg-orange-50 border border-orange-100 p-4 rounded-3xl flex items-start gap-3">
             <AlertTriangle className="text-orange-500 shrink-0" size={20} />
             <div>
-              <p className="text-xs font-bold text-orange-800">Servidor em Transição</p>
-              <p className="text-[10px] text-orange-700">Estamos migrando seus treinos para o novo sistema Firebase. Algumas funções podem estar limitadas.</p>
+              <p className="text-xs font-bold text-orange-800">Servidor em Atualização</p>
+              <p className="text-[10px] text-orange-700 leading-tight">Estamos sincronizando sua conta. Se o treino não aparecer, tente clicar em "Gerar Treino" abaixo.</p>
             </div>
           </div>
         )}
 
         {/* Weekly Progress Card */}
-        <div className="bg-black rounded-3xl p-5 text-white shadow-xl">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Meta Semanal</span>
-            <span className="text-white font-bold text-lg">{completed}/{target}</span>
+        <div className="bg-black rounded-[32px] p-6 text-white shadow-2xl relative overflow-hidden">
+          <div className="relative z-10">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Progresso Semanal</span>
+              <span className="text-orange-500 font-black text-xl">{completed}/{target}</span>
+            </div>
+            <div className="flex gap-2 mb-2">
+              {Array.from({ length: target }).map((_, i) => (
+                <div key={i} className={`h-2.5 flex-1 rounded-full ${i < completed ? "bg-orange-500" : "bg-white/10"}`} />
+              ))}
+            </div>
+            <p className="text-[10px] text-white/40 font-medium">Faltam {target - completed} treinos para bater sua meta!</p>
           </div>
-          <div className="flex gap-2 mb-1">
-            {Array.from({ length: target }).map((_, i) => (
-              <div key={i} className={`h-2 flex-1 rounded-full ${i < completed ? "bg-orange-500" : "bg-gray-800"}`} />
-            ))}
+          <div className="absolute -right-4 -bottom-4 opacity-10">
+            <Activity size={120} />
           </div>
         </div>
 
         {/* Workout Content */}
         {workoutLoading ? (
-          <div className="flex flex-col items-center justify-center py-20">
+          <div className="flex flex-col items-center justify-center py-20 bg-white rounded-[32px] border border-gray-100">
             <Loader2 size={40} className="animate-spin text-orange-500 mb-4" />
-            <p className="text-sm text-gray-500 font-medium">Carregando sua rotina...</p>
+            <p className="text-sm text-gray-500 font-bold uppercase tracking-widest">Calculando Rotina...</p>
           </div>
         ) : !workoutData?.days ? (
-          <div className="bg-gray-50 rounded-3xl p-10 flex flex-col items-center text-center border-2 border-dashed border-gray-200">
-            <div className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center mb-4">
-              <Dumbbell size={32} className="text-gray-300" />
+          <div className="bg-white rounded-[32px] p-10 flex flex-col items-center text-center border border-gray-100 shadow-sm">
+            <div className="w-20 h-20 bg-gray-50 rounded-[28px] flex items-center justify-center mb-6">
+              <Sparkles size={40} className="text-orange-300" />
             </div>
-            <h3 className="font-bold text-gray-900">Nenhum treino ativo</h3>
-            <p className="text-xs text-gray-500 mt-1 max-w-[200px]">Clique abaixo para gerar seu primeiro treino personalizado.</p>
+            <h3 className="font-black text-gray-900 text-lg">VAMOS COMEÇAR?</h3>
+            <p className="text-sm text-gray-500 mt-2 max-w-[240px]">Sua IA ainda não gerou seu treino personalizado baseado no seu perfil.</p>
             <button 
               onClick={() => generateWorkout.mutate()} 
               disabled={generateWorkout.isPending}
-              className="mt-6 bg-black text-white px-8 py-3 rounded-2xl text-sm font-bold shadow-lg active:scale-95 transition-all flex items-center gap-2"
+              className="mt-8 w-full bg-black text-white py-5 rounded-3xl font-bold shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3"
             >
-              {generateWorkout.isPending ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-              Gerar Treino com IA
+              {generateWorkout.isPending ? <Loader2 size={20} className="animate-spin" /> : <RefreshCw size={20} />}
+              GERAR TREINO COM IA
             </button>
           </div>
         ) : (
           <div className="space-y-4">
-            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Sua Planilha</h2>
+            <div className="flex items-center justify-between px-2">
+              <h2 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Sua Planilha</h2>
+              <button onClick={() => generateWorkout.mutate()} className="text-[10px] font-bold text-orange-500 uppercase tracking-widest flex items-center gap-1">
+                <RefreshCw size={10} /> Atualizar
+              </button>
+            </div>
+            
             {workoutData.days.map((day: any) => (
-              <div key={day.dayNumber} className="bg-white border border-gray-100 rounded-3xl p-4 shadow-sm">
+              <div key={day.dayNumber} className={`bg-white border transition-all duration-300 rounded-[32px] p-5 shadow-sm ${selectedDay === day.dayNumber ? "border-black ring-1 ring-black" : "border-gray-100"}`}>
                 <div 
                   className="flex items-center justify-between cursor-pointer"
                   onClick={() => setSelectedDay(selectedDay === day.dayNumber ? null : day.dayNumber)}
                 >
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-2xl bg-orange-50 flex items-center justify-center text-2xl">
+                    <div className="w-14 h-14 rounded-2xl bg-gray-50 flex items-center justify-center text-3xl shadow-inner">
                       {day.emoji || "💪"}
                     </div>
                     <div>
                       <span className="text-[10px] font-bold text-orange-500 uppercase tracking-widest">Dia {day.dayNumber}</span>
-                      <h4 className="font-bold text-gray-900 leading-tight">{day.title}</h4>
+                      <h4 className="font-black text-gray-900 leading-tight text-lg">{day.title?.toUpperCase()}</h4>
                     </div>
                   </div>
-                  <ChevronRight size={20} className={`text-gray-300 transition-transform ${selectedDay === day.dayNumber ? "rotate-90" : ""}`} />
+                  <div className={`w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center transition-transform ${selectedDay === day.dayNumber ? "rotate-90 bg-black text-white" : "text-gray-300"}`}>
+                    <ChevronRight size={18} />
+                  </div>
                 </div>
 
                 {selectedDay === day.dayNumber && (
-                  <div className="mt-6 space-y-4 animate-in fade-in slide-in-from-top-2">
+                  <div className="mt-8 space-y-5 animate-in fade-in slide-in-from-top-4 duration-500">
                     {day.exercises.map((ex: any, idx: number) => (
-                      <div key={idx} className="bg-gray-50 rounded-2xl p-4">
-                        <div className="flex justify-between items-start mb-3">
-                          <h5 className="font-bold text-gray-900 text-sm">{ex.name}</h5>
-                          <span className="text-[10px] bg-white px-2 py-1 rounded-lg font-bold text-gray-400 border border-gray-100">{ex.sets} séries</span>
+                      <div key={idx} className="bg-gray-50 rounded-3xl p-5 border border-gray-100">
+                        <div className="flex justify-between items-start mb-4">
+                          <div>
+                            <h5 className="font-black text-gray-900 text-sm leading-tight mb-1">{ex.name?.toUpperCase()}</h5>
+                            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{ex.rest} de descanso</p>
+                          </div>
+                          <span className="text-[10px] bg-black text-white px-3 py-1.5 rounded-full font-bold uppercase tracking-tighter">{ex.sets} séries</span>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap gap-2">
                           {Array.from({ length: ex.sets }).map((_, sIdx) => {
                             const isDone = completedSets[`${day.dayNumber}-${idx}-${sIdx}`];
                             return (
                               <button 
                                 key={sIdx}
                                 onClick={() => toggleSet(`${day.dayNumber}-${idx}`, sIdx, ex.rest)}
-                                className={`w-9 h-9 rounded-xl border flex items-center justify-center text-[10px] font-bold transition-all ${
-                                  isDone ? "bg-green-500 border-green-600 text-white" : "bg-white border-gray-100 text-gray-400"
+                                className={`w-11 h-11 rounded-2xl border-2 flex items-center justify-center text-xs font-black transition-all ${
+                                  isDone ? "bg-green-500 border-green-500 text-white shadow-lg shadow-green-200" : "bg-white border-gray-100 text-gray-300 hover:border-black hover:text-black"
                                 }`}
                               >
                                 {isDone ? "✓" : sIdx + 1}
