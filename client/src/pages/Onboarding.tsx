@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
-import { Sparkles, Camera, Upload, User, ChevronDown, Loader2, ShieldCheck, ScanFace } from "lucide-react";
+import { Camera, Upload, User, ChevronDown, Loader2, ShieldCheck, ScanFace, Check } from "lucide-react";
 import { toast } from "sonner";
 
 const GOALS = ["Hipertrofia", "Emagrecimento", "Condicionamento", "Saúde geral", "Força", "Resistência"];
@@ -27,7 +27,7 @@ function resizeImage(file: File, maxSize: number, quality: number): Promise<stri
         canvas.width = w;
         canvas.height = h;
         canvas.getContext("2d")?.drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL("image/jpeg", quality).split(",")[1]);
+        resolve(canvas.toDataURL("image/jpeg", quality));
       };
       img.src = e.target?.result as string;
     };
@@ -37,7 +37,7 @@ function resizeImage(file: File, maxSize: number, quality: number): Promise<stri
 
 export default function Onboarding() {
   const [, navigate] = useLocation();
-  const { isAuthenticated, loading, updateProfile } = useAuth();
+  const { isAuthenticated, loading, updateProfile, profile } = useAuth();
 
   // Redireciona para login se não autenticado
   useEffect(() => {
@@ -55,7 +55,7 @@ export default function Onboarding() {
 
   // ── Estado do formulário ──────────────────────────────────────────────────
   const [form, setForm] = useState({
-    name: "",
+    name: profile?.name || "",
     age: "",
     sex: "Masculino" as typeof SEX_OPTIONS[number],
     heightCm: "",
@@ -73,45 +73,51 @@ export default function Onboarding() {
 
   // ── Foto de Perfil ────────────────────────────────────────────────────────
   const [profilePhotoPreview, setProfilePhotoPreview] = useState<string | null>(null);
-  const [profilePhotoBase64, setProfilePhotoBase64]   = useState<string | null>(null);
 
   // ── Foto de Avaliação Física ──────────────────────────────────────────────
   const [evalPhotoPreview, setEvalPhotoPreview] = useState<string | null>(null);
-  const [evalPhotoBase64, setEvalPhotoBase64]   = useState<string | null>(null);
 
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const set = (field: string, value: string) => setForm(f => ({ ...f, [field]: value }));
 
   // ── Handlers de seleção de foto ───────────────────────────────────────────
   const handleProfilePhotoSelect = async (file: File) => {
-    const base64 = await resizeImage(file, 512, 0.85);
-    setProfilePhotoPreview(`data:image/jpeg;base64,${base64}`);
-    setProfilePhotoBase64(base64);
-    toast.success("Foto de perfil selecionada!");
+    try {
+      const dataUrl = await resizeImage(file, 512, 0.7);
+      setProfilePhotoPreview(dataUrl);
+      toast.success("Foto de perfil selecionada!");
+    } catch (err) {
+      console.error("Erro ao processar foto de perfil:", err);
+      toast.error("Erro ao processar imagem.");
+    }
   };
 
   const handleEvalPhotoSelect = async (file: File) => {
-    const base64 = await resizeImage(file, 1024, 0.85);
-    setEvalPhotoPreview(`data:image/jpeg;base64,${base64}`);
-    setEvalPhotoBase64(base64);
-    toast.success("Foto de avaliação selecionada!");
+    try {
+      const dataUrl = await resizeImage(file, 800, 0.6); // Menor qualidade para caber no Firestore se necessário
+      setEvalPhotoPreview(dataUrl);
+      toast.success("Foto de avaliação selecionada!");
+    } catch (err) {
+      console.error("Erro ao processar foto de avaliação:", err);
+      toast.error("Erro ao processar imagem.");
+    }
   };
 
   // ── Submit ────────────────────────────────────────────────────────────────
   const handleSubmit = async () => {
+    console.log("Iniciando handleSubmit no Onboarding...");
+    
     if (!form.name || !form.age || !form.heightCm || !form.weightKg) {
       toast.error("Preencha os campos obrigatórios: nome, idade, altura e peso.");
       return;
     }
 
-    setIsGenerating(true);
+    setIsSubmitting(true);
     try {
-      // Nota: Upload de fotos via tRPC removido para garantir independência total do Manus
-      // Em uma etapa futura, o upload deve ser feito diretamente para o Firebase Storage
+      console.log("Preparando objeto de salvamento...");
       
-      // 1. Salvar dados no Firestore (Firebase) - Única fonte de verdade agora
-      await updateProfile({
+      const updateData = {
         name: form.name,
         age: parseInt(form.age),
         sex: form.sex,
@@ -126,23 +132,26 @@ export default function Onboarding() {
         physicalRestrictions: form.physicalRestrictions || undefined,
         preferredExercises: form.preferredExercises || undefined,
         avoidedExercises: form.avoidedExercises || undefined,
-        // photoUrl e evalPhotoUrl seriam salvos aqui se usássemos Firebase Storage
-      });
+        photoUrl: profilePhotoPreview || undefined,
+        evalPhotoUrl: evalPhotoPreview || undefined,
+      };
 
+      console.log("Enviando para updateProfile no AuthContext...");
+      await updateProfile(updateData);
+      
+      console.log("Salvamento concluído com sucesso!");
       toast.success("Perfil salvo com sucesso!");
-
-      // 2. Ir para o Dashboard (ou tela de processamento se a IA for migrada)
-      // Como a IA ainda depende do backend Manus, redirecionamos para o Dashboard
-      // Onde o usuário poderá ver seu perfil carregado do Firestore
+      
+      // Redirecionar para o dashboard
       navigate("/dashboard");
     } catch (err) {
-      console.error("Erro detalhado ao salvar perfil:", err);
-      toast.error("Erro ao salvar perfil no Firebase. Verifique sua conexão.");
-      setIsGenerating(false);
+      console.error("ERRO CRÍTICO NO SUBMIT DO ONBOARDING:", err);
+      toast.error(err instanceof Error ? err.message : "Erro ao salvar perfil. Tente novamente.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  // ── Componente de botões de foto ──────────────────────────────────────────
   const PhotoButtons = ({
     preview,
     onCamera,
@@ -171,11 +180,11 @@ export default function Onboarding() {
         )}
       </div>
       <div className="flex gap-2 w-full">
-        <button className="btn-secondary py-2.5 px-4 text-sm" onClick={onCamera}>
+        <button className="flex-1 flex items-center justify-center gap-2 bg-white border border-gray-200 py-2.5 rounded-xl text-sm font-medium text-gray-700 shadow-sm active:bg-gray-50" onClick={onCamera}>
           <Camera size={15} /> Tirar foto
         </button>
-        <button className="btn-secondary py-2.5 px-4 text-sm" onClick={onGallery}>
-          <Upload size={15} /> Escolher da galeria
+        <button className="flex-1 flex items-center justify-center gap-2 bg-white border border-gray-200 py-2.5 rounded-xl text-sm font-medium text-gray-700 shadow-sm active:bg-gray-50" onClick={onGallery}>
+          <Upload size={15} /> Galeria
         </button>
       </div>
     </div>
@@ -183,16 +192,13 @@ export default function Onboarding() {
 
   return (
     <div className="min-h-screen bg-white pb-8">
-      {/* Header */}
       <div className="px-5 pt-10 pb-6">
         <h1 className="text-2xl font-bold text-gray-900">Vamos te conhecer</h1>
         <p className="text-gray-500 text-sm mt-1">Preencha seu perfil para a IA criar seu treino ideal</p>
       </div>
 
       <div className="px-5 space-y-5">
-
-        {/* ── SEÇÃO: FOTO DE PERFIL ─────────────────────────────────────────── */}
-        <div className="app-card space-y-4 border-none shadow-sm bg-gray-50/50">
+        <div className="bg-gray-50/50 p-5 rounded-3xl space-y-4">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 bg-black rounded-xl flex items-center justify-center shadow-sm">
               <User size={16} color="white" />
@@ -204,46 +210,32 @@ export default function Onboarding() {
           </div>
           
           <div className="bg-white p-4 rounded-2xl border border-gray-100">
-            <p className="text-xs text-gray-600 mb-4 leading-relaxed">
-              Esta foto será utilizada apenas como sua imagem de perfil dentro do aplicativo.
-            </p>
-            
             <PhotoButtons
               preview={profilePhotoPreview}
               onCamera={() => profileCameraRef.current?.click()}
               onGallery={() => profileFileRef.current?.click()}
               shape="circle"
             />
-            
-            <div className="flex items-center justify-center gap-1.5 mt-4 pt-3 border-t border-gray-0">
-              <ShieldCheck size={13} className="text-green-500 flex-shrink-0" />
-              <p className="text-[11px] text-gray-400 font-medium">Essa foto não será utilizada para análise da IA.</p>
-            </div>
           </div>
         </div>
 
-        {/* Inputs ocultos — foto de perfil */}
         <input ref={profileFileRef}   type="file" accept="image/*"                className="hidden" onChange={e => e.target.files?.[0] && handleProfilePhotoSelect(e.target.files[0])} />
         <input ref={profileCameraRef} type="file" accept="image/*" capture="user" className="hidden" onChange={e => e.target.files?.[0] && handleProfilePhotoSelect(e.target.files[0])} />
 
-        {/* ── CAMPOS DO FORMULÁRIO ──────────────────────────────────────────── */}
-
-        {/* Name */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1.5">Nome *</label>
-          <input className="app-input" placeholder="Seu nome" value={form.name} onChange={e => set("name", e.target.value)} />
+          <input className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-4 py-3.5 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-black/5 transition-all" placeholder="Seu nome" value={form.name} onChange={e => set("name", e.target.value)} />
         </div>
 
-        {/* Age + Sex */}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Idade *</label>
-            <input className="app-input" type="number" placeholder="25" value={form.age} onChange={e => set("age", e.target.value)} />
+            <input className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-4 py-3.5 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-black/5 transition-all" type="number" placeholder="25" value={form.age} onChange={e => set("age", e.target.value)} />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Sexo</label>
             <div className="relative">
-              <select className="app-input appearance-none pr-8" value={form.sex} onChange={e => set("sex", e.target.value as typeof SEX_OPTIONS[number])}>
+              <select className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-4 py-3.5 text-gray-900 appearance-none focus:outline-none focus:ring-2 focus:ring-black/5 transition-all" value={form.sex} onChange={e => set("sex", e.target.value as typeof SEX_OPTIONS[number])}>
                 {SEX_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
               </select>
               <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
@@ -251,159 +243,52 @@ export default function Onboarding() {
           </div>
         </div>
 
-        {/* Height + Weight */}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Altura (cm) *</label>
-            <input className="app-input" type="number" placeholder="175" value={form.heightCm} onChange={e => set("heightCm", e.target.value)} />
+            <input className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-4 py-3.5 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-black/5 transition-all" type="number" placeholder="175" value={form.heightCm} onChange={e => set("heightCm", e.target.value)} />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Peso atual (kg) *</label>
-            <input className="app-input" type="number" placeholder="75" value={form.weightKg} onChange={e => set("weightKg", e.target.value)} />
+            <input className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-4 py-3.5 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-black/5 transition-all" type="number" placeholder="75" value={form.weightKg} onChange={e => set("weightKg", e.target.value)} />
           </div>
         </div>
 
-        {/* Target weight */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Peso desejado (kg)</label>
-          <input className="app-input" type="number" placeholder="70 (opcional)" value={form.targetWeightKg} onChange={e => set("targetWeightKg", e.target.value)} />
-        </div>
-
-        {/* Goal */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Objetivo principal</label>
-          <div className="relative">
-            <select className="app-input appearance-none pr-8" value={form.goal} onChange={e => set("goal", e.target.value)}>
-              {GOALS.map(g => <option key={g} value={g}>{g}</option>)}
-            </select>
-            <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-          </div>
-        </div>
-
-        {/* Level */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Nível de experiência</label>
-          <div className="relative">
-            <select className="app-input appearance-none pr-8" value={form.experienceLevel} onChange={e => set("experienceLevel", e.target.value as typeof LEVELS[number])}>
-              {LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
-            </select>
-            <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-          </div>
-        </div>
-
-        {/* Days + Minutes */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Dias/semana</label>
-            <input className="app-input" type="number" min="1" max="7" value={form.daysPerWeek} onChange={e => set("daysPerWeek", e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Tempo/treino (min)</label>
-            <input className="app-input" type="number" min="20" max="180" value={form.minutesPerSession} onChange={e => set("minutesPerSession", e.target.value)} />
-          </div>
-        </div>
-
-        {/* Gym type */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Tipo de academia</label>
-          <div className="relative">
-            <select className="app-input appearance-none pr-8" value={form.gymType} onChange={e => set("gymType", e.target.value)}>
-              {GYM_TYPES.map(g => <option key={g} value={g}>{g}</option>)}
-            </select>
-            <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-          </div>
-        </div>
-
-        {/* Restrictions */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Restrições físicas, dores ou lesões</label>
-          <textarea
-            className="app-input resize-none"
-            rows={3}
-            placeholder="Ex: dor no joelho, hérnia de disco... (opcional)"
-            value={form.physicalRestrictions}
-            onChange={e => set("physicalRestrictions", e.target.value)}
-          />
-        </div>
-
-        {/* Preferred exercises */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Exercícios que gosta (opcional)</label>
-          <textarea
-            className="app-input resize-none"
-            rows={2}
-            placeholder="Ex: agachamento, supino..."
-            value={form.preferredExercises}
-            onChange={e => set("preferredExercises", e.target.value)}
-          />
-        </div>
-
-        {/* Avoided exercises */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Exercícios que prefere evitar (opcional)</label>
-          <textarea
-            className="app-input resize-none"
-            rows={2}
-            placeholder="Ex: leg press, rosca direta..."
-            value={form.avoidedExercises}
-            onChange={e => set("avoidedExercises", e.target.value)}
-          />
-        </div>
-
-        {/* ── SEÇÃO: FOTO PARA AVALIAÇÃO FÍSICA ────────────────────────────── */}
-        <div className="app-card space-y-4 border-2 border-orange-100 bg-orange-50/30">
+        <div className="bg-orange-50/50 p-5 rounded-3xl space-y-4">
           <div className="flex items-center gap-2.5">
-            <div
-              className="w-8 h-8 rounded-xl flex items-center justify-center shadow-sm"
-              style={{ background: "linear-gradient(135deg, #FF5F6D 0%, #FFC371 100%)" }}
-            >
+            <div className="w-8 h-8 bg-orange-500 rounded-xl flex items-center justify-center shadow-sm">
               <ScanFace size={16} color="white" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-gray-900">Foto para Avaliação Física</h2>
+              <h2 className="text-base font-bold text-gray-900">Foto para Avaliação</h2>
               <p className="text-[11px] text-orange-600 font-medium">Recomendado para IA</p>
             </div>
           </div>
-
-          <div className="bg-white p-4 rounded-2xl border border-orange-50">
-            <p className="text-xs text-gray-600 mb-4 leading-relaxed">
-              Envie uma foto de corpo inteiro, de frente, em um ambiente bem iluminado. Essa imagem será utilizada exclusivamente pela IA para analisar sua composição corporal e criar um treino personalizado com base na sua estrutura física e nas informações preenchidas neste cadastro.
-            </p>
-            
+          
+          <div className="bg-white p-4 rounded-2xl border border-orange-100">
             <PhotoButtons
               preview={evalPhotoPreview}
               onCamera={() => evalCameraRef.current?.click()}
               onGallery={() => evalFileRef.current?.click()}
               shape="rect"
             />
-            
-            <div className="flex items-start gap-2 mt-4 pt-3 border-t border-orange-50">
-              <ShieldCheck size={14} className="text-orange-500 flex-shrink-0 mt-0.5" />
-              <p className="text-[11px] text-gray-400 leading-relaxed">
-                Essa imagem será utilizada exclusivamente para gerar seu primeiro treino e servir como base para futuras comparações da evolução física.
-              </p>
-            </div>
           </div>
         </div>
 
-        {/* Inputs ocultos — foto de avaliação */}
-        <input ref={evalFileRef}   type="file" accept="image/*"                  className="hidden" onChange={e => e.target.files?.[0] && handleEvalPhotoSelect(e.target.files[0])} />
-        <input ref={evalCameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={e => e.target.files?.[0] && handleEvalPhotoSelect(e.target.files[0])} />
+        <input ref={evalFileRef}   type="file" accept="image/*"                className="hidden" onChange={e => e.target.files?.[0] && handleEvalPhotoSelect(e.target.files[0])} />
+        <input ref={evalCameraRef} type="file" accept="image/*" capture="user" className="hidden" onChange={e => e.target.files?.[0] && handleEvalPhotoSelect(e.target.files[0])} />
 
-        {/* ── SUBMIT ────────────────────────────────────────────────────────── */}
-        <div className="pt-2 pb-6">
-          <button
-            className="btn-primary"
-            onClick={handleSubmit}
-            disabled={isGenerating}
-          >
-            {isGenerating ? (
-              <><Loader2 size={18} className="animate-spin" /> Salvando informações...</>
-            ) : (
-              <><Sparkles size={18} /> Finalizar Cadastro</>
-            )}
-          </button>
-        </div>
+        <button 
+          className="w-full bg-black text-white py-4 rounded-2xl font-bold text-base shadow-lg shadow-black/10 active:scale-[0.98] transition-all disabled:opacity-50 disabled:active:scale-100 flex items-center justify-center gap-2"
+          onClick={handleSubmit}
+          disabled={isSubmitting}
+        >
+          {isSubmitting ? (
+            <><Loader2 className="animate-spin" size={20} /> Salvando...</>
+          ) : (
+            <><Check size={20} /> Finalizar Cadastro</>
+          )}
+        </button>
       </div>
     </div>
   );

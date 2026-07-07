@@ -23,8 +23,15 @@ export interface UserProfile {
   goal?: string;
   experienceLevel?: string;
   photoUrl?: string;
+  evalPhotoUrl?: string;
   createdAt: number;
   updatedAt: number;
+  daysPerWeek?: number;
+  minutesPerSession?: number;
+  gymType?: string;
+  physicalRestrictions?: string;
+  preferredExercises?: string;
+  avoidedExercises?: string;
 }
 
 export function useFirebaseAuth() {
@@ -38,13 +45,11 @@ export function useFirebaseAuth() {
       try {
         setUser(authUser);
         if (authUser) {
-          // Buscar perfil do usuário no Firestore
           const userDocRef = doc(db, "users", authUser.uid);
           const userDocSnap = await getDoc(userDocRef);
           if (userDocSnap.exists()) {
             setProfile(userDocSnap.data() as UserProfile);
           } else {
-            // Criar perfil inicial se não existir
             const initialProfile: UserProfile = {
               uid: authUser.uid,
               email: authUser.email || "",
@@ -60,13 +65,11 @@ export function useFirebaseAuth() {
         }
         setError(null);
       } catch (err) {
-        console.error("Erro ao buscar perfil do usuário:", err);
-        setError(err instanceof Error ? err.message : "Erro desconhecido");
+        console.error("Erro ao buscar perfil:", err);
       } finally {
         setLoading(false);
       }
     });
-
     return unsubscribe;
   }, []);
 
@@ -74,7 +77,6 @@ export function useFirebaseAuth() {
     try {
       setLoading(true);
       const result = await createUserWithEmailAndPassword(auth, email, password);
-      // Atualizar displayName no Firebase Auth
       await updateFirebaseProfile(result.user, { displayName: name });
       const newProfile: UserProfile = {
         uid: result.user.uid,
@@ -138,14 +140,20 @@ export function useFirebaseAuth() {
   const updateProfile = async (updates: Partial<UserProfile>) => {
     if (!user) throw new Error("Usuário não autenticado");
     try {
+      console.log("Iniciando salvamento no Firestore para UID:", user.uid);
       const userDocRef = doc(db, "users", user.uid);
       const updatedData = {
         ...updates,
         updatedAt: Date.now(),
       };
+      
+      // Tentar setDoc com merge para garantir que o documento exista ou seja atualizado
       await setDoc(userDocRef, updatedData, { merge: true });
-      setProfile((prev) => (prev ? { ...prev, ...updatedData } : null));
+      console.log("Salvamento no Firestore concluído com sucesso!");
+      
+      setProfile((prev) => (prev ? { ...prev, ...updatedData } : (updatedData as UserProfile)));
     } catch (err) {
+      console.error("ERRO CRÍTICO NO FIRESTORE:", err);
       const errorMsg = translateFirebaseError(err);
       setError(errorMsg);
       throw new Error(errorMsg);
@@ -167,28 +175,22 @@ export function useFirebaseAuth() {
 }
 
 function translateFirebaseError(err: unknown): string {
+  console.error("Firebase Error Object:", err);
   if (!(err instanceof Error)) return "Erro desconhecido";
+  
+  // Capturar erro de permissão do Firestore
+  if (err.message?.includes("permission-denied") || (err as any).code === "permission-denied") {
+    return "Erro de permissão no banco de dados. Contate o suporte.";
+  }
+
   const code = (err as { code?: string }).code;
   switch (code) {
-    case "auth/email-already-in-use":
-      return "Este e-mail já está em uso. Tente fazer login.";
-    case "auth/invalid-email":
-      return "E-mail inválido. Verifique e tente novamente.";
-    case "auth/weak-password":
-      return "Senha muito fraca. Use pelo menos 6 caracteres.";
-    case "auth/user-not-found":
-      return "Usuário não encontrado. Verifique o e-mail.";
-    case "auth/wrong-password":
-      return "Senha incorreta. Tente novamente.";
-    case "auth/invalid-credential":
-      return "E-mail ou senha incorretos. Tente novamente.";
-    case "auth/too-many-requests":
-      return "Muitas tentativas. Aguarde alguns minutos e tente novamente.";
-    case "auth/network-request-failed":
-      return "Erro de conexão. Verifique sua internet.";
-    case "auth/user-disabled":
-      return "Esta conta foi desativada. Entre em contato com o suporte.";
-    default:
-      return err.message || "Erro de autenticação. Tente novamente.";
+    case "auth/email-already-in-use": return "Este e-mail já está em uso.";
+    case "auth/invalid-email": return "E-mail inválido.";
+    case "auth/weak-password": return "Senha muito fraca.";
+    case "auth/user-not-found": return "Usuário não encontrado.";
+    case "auth/wrong-password": return "Senha incorreta.";
+    case "auth/invalid-credential": return "Credenciais inválidas.";
+    default: return err.message || "Erro inesperado. Tente novamente.";
   }
 }
