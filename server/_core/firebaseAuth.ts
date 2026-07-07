@@ -26,16 +26,20 @@ export function registerFirebaseAuthRoutes(app: Express) {
 
       console.log("[Firebase Auth] Criando/atualizando usuário com openId:", openId);
 
-      // Criar ou atualizar usuário no banco de dados
-      await db.upsertUser({
-        openId,
-        name: name || null,
-        email: email || null,
-        loginMethod: "firebase",
-        lastSignedIn: new Date(),
-      });
-
-      console.log("[Firebase Auth] Usuário criado/atualizado com sucesso");
+      // Criar ou atualizar usuário no banco de dados (se disponível)
+      try {
+        await db.upsertUser({
+          openId,
+          name: name || null,
+          email: email || null,
+          loginMethod: "firebase",
+          lastSignedIn: new Date(),
+        });
+        console.log("[Firebase Auth] Usuário criado/atualizado com sucesso");
+      } catch (dbError) {
+        console.warn("[Firebase Auth] Erro ao salvar no banco de dados (continuando):", dbError);
+        // Continua mesmo se o banco de dados não estiver disponível
+      }
 
       // Criar um session token JWT
       const sessionToken = await sdk.createSessionToken(openId, {

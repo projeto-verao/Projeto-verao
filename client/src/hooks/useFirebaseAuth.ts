@@ -123,9 +123,13 @@ export function useFirebaseAuth() {
       } else {
         const data = await authResponse.json();
         console.log("[useFirebaseAuth] Autenticação bem-sucedida:", data);
+        console.log("[useFirebaseAuth] data.token existe?", !!data.token);
         if (data.token) {
           localStorage.setItem("auth_token", data.token);
           console.log("[useFirebaseAuth] Token armazenado no localStorage");
+          console.log("[useFirebaseAuth] Token verificado:", localStorage.getItem("auth_token")?.substring(0, 20));
+        } else {
+          console.error("[useFirebaseAuth] data.token não existe! Chaves:", Object.keys(data));
         }
       }
       
@@ -165,9 +169,13 @@ export function useFirebaseAuth() {
       } else {
         const data = await authResponse.json();
         console.log("[useFirebaseAuth] Autenticação bem-sucedida:", data);
+        console.log("[useFirebaseAuth] data.token existe?", !!data.token);
         if (data.token) {
           localStorage.setItem("auth_token", data.token);
           console.log("[useFirebaseAuth] Token armazenado no localStorage");
+          console.log("[useFirebaseAuth] Token verificado:", localStorage.getItem("auth_token")?.substring(0, 20));
+        } else {
+          console.error("[useFirebaseAuth] data.token não existe! Chaves:", Object.keys(data));
         }
       }
       
