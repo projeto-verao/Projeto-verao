@@ -17,11 +17,11 @@ export default function Login() {
   }, [isAuthenticated, loading, navigate]);
 
   const handleLogin = () => {
-    window.location.href = getLoginUrl();
+    window.location.href = getLoginUrl("/");
   };
 
   const handleSignup = () => {
-    window.location.href = getLoginUrl() + "&signup=true";
+    window.location.href = getLoginUrl("/");
   };
 
   if (loading) {
