@@ -1,97 +1,84 @@
-// Preconfigured storage helpers for Manus WebDev templates
-// Uploads via Forge Server presigned URL to S3 (PUT direct).
-// Downloads return /manus-storage/{key} paths served via 307 redirect.
-
+/**
+ * storage.ts — Módulo de armazenamento do Projeto Verão.
+ *
+ * Migrado de Manus Forge/S3 para armazenamento local temporário.
+ * Para produção, configure o Firebase Storage via Firebase Admin SDK
+ * ou use outro serviço de storage configurado via variáveis de ambiente.
+ *
+ * Estratégia atual:
+ * - Imagens em base64 são armazenadas como data URLs (para desenvolvimento)
+ * - Em produção, configure FIREBASE_STORAGE_BUCKET para usar Firebase Storage
+ */
+import { randomUUID } from "crypto";
 import { ENV } from "./_core/env";
 
-function getForgeConfig() {
-  const forgeUrl = ENV.forgeApiUrl;
-  const forgeKey = ENV.forgeApiKey;
-
-  if (!forgeUrl || !forgeKey) {
-    throw new Error(
-      "Storage config missing: set BUILT_IN_FORGE_API_URL and BUILT_IN_FORGE_API_KEY",
-    );
-  }
-
-  return { forgeUrl: forgeUrl.replace(/\/+$/, ""), forgeKey };
-}
-
-function normalizeKey(relKey: string): string {
-  return relKey.replace(/^\/+/, "");
-}
-
 function appendHashSuffix(relKey: string): string {
-  const hash = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+  const hash = randomUUID().replace(/-/g, "").slice(0, 8);
   const lastDot = relKey.lastIndexOf(".");
   if (lastDot === -1) return `${relKey}_${hash}`;
   return `${relKey.slice(0, lastDot)}_${hash}${relKey.slice(lastDot)}`;
 }
 
+/**
+ * Faz upload de um arquivo e retorna a URL de acesso.
+ * 
+ * Se FIREBASE_STORAGE_BUCKET estiver configurado, usa Firebase Storage.
+ * Caso contrário, retorna uma data URL (apenas para desenvolvimento/testes).
+ */
 export async function storagePut(
   relKey: string,
   data: Buffer | Uint8Array | string,
   contentType = "application/octet-stream",
 ): Promise<{ key: string; url: string }> {
-  const { forgeUrl, forgeKey } = getForgeConfig();
-  const key = appendHashSuffix(normalizeKey(relKey));
+  const key = appendHashSuffix(relKey.replace(/^\/+/, ""));
 
-  // 1. Get presigned PUT URL from Forge
-  const presignUrl = new URL("v1/storage/presign/put", forgeUrl + "/");
-  presignUrl.searchParams.set("path", key);
-
-  const presignResp = await fetch(presignUrl, {
-    headers: { Authorization: `Bearer ${forgeKey}` },
-  });
-
-  if (!presignResp.ok) {
-    const msg = await presignResp.text().catch(() => presignResp.statusText);
-    throw new Error(`Storage presign failed (${presignResp.status}): ${msg}`);
+  // Se Firebase Storage estiver configurado, usar Firebase Admin SDK
+  if (ENV.firebaseStorageBucket) {
+    try {
+      // Importação dinâmica do Firebase Admin SDK (opcional)
+      const { initializeApp, getApps, cert } = await import("firebase-admin/app");
+      const { getStorage } = await import("firebase-admin/storage");
+      
+      if (!getApps().length) {
+        initializeApp({
+          storageBucket: ENV.firebaseStorageBucket,
+        });
+      }
+      
+      const bucket = getStorage().bucket();
+      const file = bucket.file(key);
+      const buffer = typeof data === "string" ? Buffer.from(data) : Buffer.from(data);
+      
+      await file.save(buffer, {
+        metadata: { contentType },
+        public: true,
+      });
+      
+      const url = `https://storage.googleapis.com/${ENV.firebaseStorageBucket}/${key}`;
+      return { key, url };
+    } catch (err) {
+      console.warn("[Storage] Firebase Admin SDK não disponível, usando fallback:", err);
+    }
   }
 
-  const { url: s3Url } = (await presignResp.json()) as { url: string };
-  if (!s3Url) throw new Error("Forge returned empty presign URL");
-
-  // 2. PUT file directly to S3
-  const blob =
-    typeof data === "string"
-      ? new Blob([data], { type: contentType })
-      : new Blob([data as any], { type: contentType });
-
-  const uploadResp = await fetch(s3Url, {
-    method: "PUT",
-    headers: { "Content-Type": contentType },
-    body: blob,
-  });
-
-  if (!uploadResp.ok) {
-    throw new Error(`Storage upload to S3 failed (${uploadResp.status})`);
-  }
-
-  return { key, url: `/manus-storage/${key}` };
+  // Fallback: retornar data URL (apenas para desenvolvimento)
+  const base64 = typeof data === "string" ? data : Buffer.from(data).toString("base64");
+  const dataUrl = `data:${contentType};base64,${base64}`;
+  
+  console.warn("[Storage] Usando data URL como fallback. Configure FIREBASE_STORAGE_BUCKET para produção.");
+  return { key, url: dataUrl };
 }
 
+/**
+ * Retorna a URL de acesso para um arquivo armazenado.
+ */
 export async function storageGet(relKey: string): Promise<{ key: string; url: string }> {
-  const key = normalizeKey(relKey);
-  return { key, url: `/manus-storage/${key}` };
-}
-
-export async function storageGetSignedUrl(relKey: string): Promise<string> {
-  const { forgeUrl, forgeKey } = getForgeConfig();
-  const key = normalizeKey(relKey);
-
-  const getUrl = new URL("v1/storage/presign/get", forgeUrl + "/");
-  getUrl.searchParams.set("path", key);
-
-  const resp = await fetch(getUrl, {
-    headers: { Authorization: `Bearer ${forgeKey}` },
-  });
-
-  if (!resp.ok) {
-    const msg = await resp.text().catch(() => resp.statusText);
-    throw new Error(`Storage signed URL failed (${resp.status}): ${msg}`);
+  const key = relKey.replace(/^\/+/, "");
+  
+  if (ENV.firebaseStorageBucket) {
+    const url = `https://storage.googleapis.com/${ENV.firebaseStorageBucket}/${key}`;
+    return { key, url };
   }
-
-  const { url } = (await resp.json()) as { url: string };
-  return url;
+  
+  return { key, url: key };
 }
