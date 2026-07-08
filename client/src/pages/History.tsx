@@ -60,7 +60,7 @@ export default function History() {
           </div>
         ) : (
           <div className="space-y-3">
-            {versions.map((version, index) => {
+            {versions.map((version: any, index: number) => {
               const isExpanded = expandedId === version.id;
               const isLatest = index === 0;
               return (

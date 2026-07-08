@@ -502,7 +502,7 @@ export default function IATrainer() {
             </div>
           ) : (
             <div className="space-y-3">
-              {workoutVersions.map(version => (
+              {workoutVersions.map((version: any) => (
                 <div key={version.id} className="app-card">
                   <div className="flex items-start justify-between">
                     <div className="flex-1 min-w-0">

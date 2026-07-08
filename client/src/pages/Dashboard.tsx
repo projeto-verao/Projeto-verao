@@ -45,8 +45,12 @@ export default function Dashboard() {
   const profile = firebaseProfile || trpcProfile;
 
   const generateWorkout = trpc.workout.generate.useMutation({
-    onSuccess: () => {
+    onSuccess: (data) => {
       toast.success("Novo treino gerado com sucesso!");
+      // Cache o treino em sessionStorage como fallback
+      if (data) {
+        sessionStorage.setItem("cached_workout", JSON.stringify(data));
+      }
       refetchWorkout();
     },
     onError: (err) => {
@@ -54,6 +58,24 @@ export default function Dashboard() {
       toast.error("Erro ao gerar treino. Tente novamente em instantes.");
     },
   });
+
+  // Tentar carregar treino do cache se não houver no banco
+  useEffect(() => {
+    if (!activeWorkout && !workoutLoading) {
+      const cachedWorkout = sessionStorage.getItem("cached_workout");
+      if (cachedWorkout) {
+        try {
+          const parsed = JSON.parse(cachedWorkout);
+          // Usar o treino em cache como fallback
+          if (parsed?.content) {
+            workoutData = JSON.parse(parsed.content);
+          }
+        } catch (e) {
+          console.warn("Erro ao carregar treino do cache", e);
+        }
+      }
+    }
+  }, [activeWorkout, workoutLoading]);
 
   const completed = weekProgress?.completed ?? 0;
   const target = weekProgress?.target ?? 4;

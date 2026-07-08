@@ -405,7 +405,7 @@ Regras:
       .input(z.object({ versionId: z.number() }))
       .mutation(async ({ ctx, input }) => {
         const versions = await getWorkoutVersions(ctx.user.id);
-        const version = versions.find(v => v.id === input.versionId);
+        const version = versions.find((v: any) => v.id === input.versionId);
         if (!version) throw new Error("Versão não encontrada");
 
         const workout = await createWorkout({
@@ -476,7 +476,7 @@ Estrutura do JSON:
 Se NÃO houver pedido de mudança no treino, responda normalmente sem a tag.
 Responda sempre em português do Brasil.`;
 
-        const chatMessages = history.reverse().map(m => ({
+        const chatMessages = history.reverse().map((m: any) => ({
           role: m.role as "user" | "assistant",
           content: m.content,
         }));
