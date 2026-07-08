@@ -2,6 +2,19 @@
 
 Todas as mudanças notáveis no projeto serão documentadas neste arquivo.
 
+## [1.2.0] - 2026-07-08
+
+### Adicionado
+- Hook `useFirebaseStorage.ts` para upload de arquivos diretamente para o Firebase Storage no cliente.
+- Funcionalidade de upload de fotos de progresso no `IATrainer.tsx` usando o `useFirebaseStorage`.
+
+### Modificado
+- **Armazenamento de Imagens:** O endpoint `bodyProgress.add` no `routers.ts` agora aceita `photoUrl` (URL pública do Firebase Storage) como entrada principal para fotos de progresso. Mantém compatibilidade com `photoBase64` como fallback.
+- **Fallback de Autenticação:** Confirmado que o `main.tsx` já configura o cliente tRPC para enviar o header `Authorization` com o token do `localStorage` em todas as requisições, garantindo autenticação em ambientes com bloqueio de cookies.
+
+### Corrigido
+- Erro de tipagem no `IATrainer.tsx` (`profile?.uid` corrigido para `profile?.userId`) ao construir o caminho do Firebase Storage.
+
 ## [1.1.0] - 2026-07-08
 
 ### Adicionado
