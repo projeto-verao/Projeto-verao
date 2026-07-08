@@ -46,7 +46,7 @@ function isRetryableError(error: any): boolean {
     'UNAUTHENTICATED'
   ];
   
-  const errorCode = error?.code || error?.message || '';
+  const errorCode = String(error?.code || error?.message || '');
   return retryableMessages.some(msg => errorCode.includes(msg));
 }
 
