@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useState, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/contexts/AuthContext";
 import AppLayout from "@/components/AppLayout";
@@ -6,6 +6,7 @@ import { ArrowLeft, Send, Loader2, Camera, Upload, User, ChevronDown, RotateCcw,
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 import { Streamdown } from "streamdown";
+import { useFirebaseStorage } from "@/hooks/useFirebaseStorage";
 
 type Tab = "chat" | "perfil" | "evolucao" | "historico";
 
@@ -42,6 +43,7 @@ export default function IATrainer() {
     onSuccess: () => { toast.success("Perfil atualizado!"); refetchProfile(); },
   });
   const uploadPhoto = trpc.profile.uploadPhoto.useMutation();
+  const { uploadFromDataUrl } = useFirebaseStorage();
 
   const [profileForm, setProfileForm] = useState({
     name: "", age: "", sex: "Masculino", heightCm: "", weightKg: "",
@@ -87,6 +89,8 @@ export default function IATrainer() {
   const [evoForm, setEvoForm] = useState({ weightKg: "", bodyFatPercent: "", chestCm: "", waistCm: "", armCm: "", thighCm: "", notes: "" });
   const [evoPhotoBase64, setEvoPhotoBase64] = useState<string | null>(null);
   const [evoPhotoPreview, setEvoPhotoPreview] = useState<string | null>(null);
+  const [evoPhotoUrl, setEvoPhotoUrl] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   // History
   const { data: workoutVersions, refetch: refetchVersions } = trpc.workoutHistory.list.useQuery();
@@ -105,11 +109,11 @@ export default function IATrainer() {
     sendMessage.mutate({ message: message.trim() });
   };
 
-  const handleEvoPhoto = (file: File) => {
+  const handleEvoPhoto = async (file: File) => {
     const reader = new FileReader();
-    reader.onload = e => {
+    reader.onload = async (e) => {
       const img = new Image();
-      img.onload = () => {
+      img.onload = async () => {
         const canvas = document.createElement('canvas');
         const MAX_WIDTH = 1024;
         const MAX_HEIGHT = 1024;
@@ -136,6 +140,21 @@ export default function IATrainer() {
         const resizedBase64 = canvas.toDataURL('image/jpeg', 0.8);
         setEvoPhotoPreview(resizedBase64);
         setEvoPhotoBase64(resizedBase64.split(",")[1]);
+
+        // Upload para Firebase Storage
+        try {
+          setUploadingPhoto(true);
+          const timestamp = Date.now();
+          const path = `progress/${profile?.userId || 'unknown'}/photo-${timestamp}.jpg`;
+          const url = await uploadFromDataUrl(resizedBase64, path);
+          setEvoPhotoUrl(url);
+          toast.success("Foto enviada para o Firebase Storage!");
+        } catch (err) {
+          console.error("Erro ao fazer upload:", err);
+          toast.error("Erro ao enviar foto. Usando fallback local.");
+        } finally {
+          setUploadingPhoto(false);
+        }
       };
       img.src = e.target?.result as string;
     };
@@ -390,9 +409,9 @@ export default function IATrainer() {
                   armCm: evoForm.armCm ? parseFloat(evoForm.armCm) : undefined,
                   thighCm: evoForm.thighCm ? parseFloat(evoForm.thighCm) : undefined,
                   notes: evoForm.notes || undefined,
-                  photoBase64: evoPhotoBase64 || undefined,
+                  photoUrl: evoPhotoUrl || undefined,
                 })}
-                disabled={addProgress.isPending}
+                disabled={addProgress.isPending || uploadingPhoto}
               >
                 {addProgress.isPending ? <Loader2 size={14} className="animate-spin" /> : null}
                 Salvar registro

@@ -674,14 +674,15 @@ Seja específico e prático. Responda em português.`;
         armCm: z.number().optional(),
         thighCm: z.number().optional(),
         notes: z.string().optional(),
+        photoUrl: z.string().optional(),
         photoBase64: z.string().optional(),
         photoMime: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        let photoUrl: string | undefined;
+        let photoUrl: string | undefined = input.photoUrl;
         let photoKey: string | undefined;
 
-        if (input.photoBase64) {
+        if (!photoUrl && input.photoBase64) {
           const buffer = Buffer.from(input.photoBase64, "base64");
           const key = `progress/${ctx.user.id}/photo-${Date.now()}.jpg`;
           const stored = await storagePut(key, buffer, input.photoMime || "image/jpeg");
