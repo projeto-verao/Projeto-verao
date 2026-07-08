@@ -51,9 +51,9 @@ export default function Onboarding() {
         age: parseInt(form.age),
         heightCm: parseFloat(form.heightCm),
         weightKg: parseFloat(form.weightKg),
-        targetWeightKg: form.targetWeightKg ? parseFloat(form.targetWeightKg) : null,
+        targetWeightKg: form.targetWeightKg ? parseFloat(form.targetWeightKg) : undefined,
         daysPerWeek: parseInt(form.daysPerWeek),
-        minutesPerWorkout: parseInt(form.minutesPerWorkout),
+        minutesPerSession: parseInt(form.minutesPerWorkout),
         onboardingCompleted: true,
         updatedAt: Date.now()
       });
