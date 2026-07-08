@@ -1,18 +1,73 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // ─── Funções Auxiliares ──────────────────────────────────────────────────
+    
     function isAuthenticated() {
       return request.auth != null;
     }
+    
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
+    
+    function isValidWorkout(data) {
+      return data.keys().hasAll(['name', 'exercises', 'duration', 'difficulty']) &&
+             data.name is string &&
+             data.exercises is list &&
+             data.duration is number &&
+             data.difficulty is string &&
+             data.difficulty in ['iniciante', 'intermediário', 'avançado'];
+    }
+    
+    function isValidBodyProgress(data) {
+      return data.keys().hasAll(['weight', 'date']) &&
+             data.weight is number &&
+             data.date is timestamp &&
+             data.weight > 0 &&
+             data.weight < 500;
+    }
+    
+    // ─── Users Collection ────────────────────────────────────────────────────
+    
     match /users/{userId} {
+      // Usuário pode ler/escrever seus próprios dados
       allow read, write: if isOwner(userId);
-      match /{allPaths=**} {
+      
+      // Subcoleções com validações específicas
+      match /workouts/{workoutId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidWorkout(request.resource.data);
+        allow update: if isOwner(userId) && isValidWorkout(request.resource.data);
+        allow delete: if isOwner(userId);
+      }
+      
+      match /bodyProgress/{progressId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidBodyProgress(request.resource.data);
+        allow update: if isOwner(userId) && isValidBodyProgress(request.resource.data);
+        allow delete: if isOwner(userId);
+      }
+      
+      match /waterLogs/{logId} {
+        allow read, write: if isOwner(userId);
+      }
+      
+      match /meals/{mealId} {
+        allow read, write: if isOwner(userId);
+      }
+      
+      match /goals/{goalId} {
+        allow read, write: if isOwner(userId);
+      }
+      
+      match /chatMessages/{messageId} {
         allow read, write: if isOwner(userId);
       }
     }
+    
+    // ─── Deny Everything Else ───────────────────────────────────────────────
+    
     match /{document=**} {
       allow read, write: if false;
     }
