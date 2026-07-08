@@ -59,9 +59,16 @@ export default function Dashboard() {
     },
   });
 
-  // Tentar carregar treino do cache se não houver no banco
-  useEffect(() => {
-    if (!activeWorkout && !workoutLoading) {
+  const completed = weekProgress?.completed ?? 0;
+  const target = weekProgress?.target ?? 4;
+
+  // Parse workout JSON
+  let workoutData: any = null;
+  try {
+    if (activeWorkout?.content) {
+      workoutData = JSON.parse(activeWorkout.content);
+    } else {
+      // Tentar carregar treino do cache se não houver no banco
       const cachedWorkout = sessionStorage.getItem("cached_workout");
       if (cachedWorkout) {
         try {
@@ -74,17 +81,6 @@ export default function Dashboard() {
           console.warn("Erro ao carregar treino do cache", e);
         }
       }
-    }
-  }, [activeWorkout, workoutLoading]);
-
-  const completed = weekProgress?.completed ?? 0;
-  const target = weekProgress?.target ?? 4;
-
-  // Parse workout JSON
-  let workoutData: any = null;
-  try {
-    if (activeWorkout?.content) {
-      workoutData = JSON.parse(activeWorkout.content);
     }
   } catch (e) {
     workoutData = { title: activeWorkout?.title, content: activeWorkout?.content };
