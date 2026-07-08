@@ -39,7 +39,41 @@ export default function Onboarding() {
     }
   }, [isAuthenticated, loading, navigate, profile]);
 
+  const validateNumericFields = () => {
+    const age = parseInt(form.age);
+    const height = parseFloat(form.heightCm);
+    const weight = parseFloat(form.weightKg);
+    const daysPerWeek = parseInt(form.daysPerWeek);
+    const minutesPerSession = parseInt(form.minutesPerWorkout);
+
+    if (isNaN(age) || age < 13 || age > 120) {
+      toast.error("Idade deve estar entre 13 e 120 anos");
+      return false;
+    }
+    if (isNaN(height) || height < 100 || height > 250) {
+      toast.error("Altura deve estar entre 100cm e 250cm");
+      return false;
+    }
+    if (isNaN(weight) || weight < 20 || weight > 300) {
+      toast.error("Peso deve estar entre 20kg e 300kg");
+      return false;
+    }
+    if (isNaN(daysPerWeek) || daysPerWeek < 1 || daysPerWeek > 7) {
+      toast.error("Dias por semana deve estar entre 1 e 7");
+      return false;
+    }
+    if (isNaN(minutesPerSession) || minutesPerSession < 15 || minutesPerSession > 180) {
+      toast.error("Minutos por sessão deve estar entre 15 e 180");
+      return false;
+    }
+    return true;
+  };
+
   const handleSubmit = async () => {
+    if (!validateNumericFields()) {
+      return;
+    }
+
     setIsSubmitting(true);
     const toastId = toast.loading("Finalizando seu cadastro...");
 
