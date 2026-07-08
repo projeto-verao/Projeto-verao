@@ -101,9 +101,11 @@ export function getFirebaseDb() {
   try {
     // Inicializar Firebase Admin se não estiver inicializado
     if (getApps().length === 0) {
+      console.log(`${LOG_PREFIX} Tentando inicializar Firebase Admin SDK...`);
       initializeApp();
     }
     db = getFirestore();
+
     console.log(`${LOG_PREFIX} Firestore inicializado com sucesso`);
     return db;
   } catch (error) {
@@ -141,11 +143,14 @@ export async function saveWorkoutToFirestore(
       const workoutRef = firestore.collection("users").doc(userId).collection("workouts");
       
       // Deactivate previous workouts
+      console.log(`${LOG_PREFIX} Buscando treinos ativos para desativar...`);
       const activeWorkouts = await workoutRef.where("isActive", "==", true).get();
+      console.log(`${LOG_PREFIX} Encontrados ${activeWorkouts.docs.length} treinos ativos.`);
       for (const doc of activeWorkouts.docs) {
         await doc.ref.update({ isActive: false });
       }
 
+      console.log(`${LOG_PREFIX} Adicionando novo treino...`);
       // Add new workout
       const docRef = await workoutRef.add({
         ...workout,
