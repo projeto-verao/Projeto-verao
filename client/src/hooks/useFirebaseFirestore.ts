@@ -108,6 +108,23 @@ export interface ChatMessageEntry {
   createdAt: Timestamp;
 }
 
+export interface ReminderConfig {
+  id: string;
+  enabled: boolean;
+  type: string;
+  title: string;
+  description: string;
+  icon: string;
+  repetitionType: 'once_a_day' | 'every_x_hours' | 'specific_days' | 'training_days' | 'workdays' | 'daily';
+  time?: string; // HH:mm
+  intervalHours?: number;
+  daysOfWeek?: number[]; // 0-6
+  sound: boolean;
+  vibration: boolean;
+  repeatUntilDone: boolean;
+  lastCompletedAt?: Timestamp;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function userCol(userId: string, name: string) {
@@ -410,4 +427,28 @@ export const firestoreService = {
       await Promise.all(remaining.docs.map((d) => deleteDoc(d.ref)));
     }
   },
+
+  async getReminderConfigs(userId: string): Promise<ReminderConfig[]> {
+    const colRef = userCol(userId, "reminders");
+    const q = query(colRef);
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ReminderConfig));
+  },
+
+  async updateReminderConfig(userId: string, config: Partial<ReminderConfig> & { id: string }) {
+    const docRef = doc(db, "users", userId, "reminders", config.id);
+    await setDoc(docRef, config, { merge: true });
+  },
+
+  async saveAllReminders(userId: string, configs: ReminderConfig[]) {
+    // Firebase Web SDK doesn't have a direct writeBatch for the entire array easily in this context without looping
+    // but we can use a loop with multiple setDoc or a proper batch
+    const { writeBatch } = await import("firebase/firestore");
+    const batch = writeBatch(db);
+    configs.forEach(config => {
+      const docRef = doc(db, "users", userId, "reminders", config.id);
+      batch.set(docRef, config);
+    });
+    await batch.commit();
+  }
 };

@@ -1,11 +1,11 @@
 import { useLocation, Link } from "wouter";
-import { Dumbbell, Utensils, MessageCircle, Target, User } from "lucide-react";
+import { Dumbbell, Utensils, MessageCircle, Target, Bell, User } from "lucide-react";
 
 const tabs = [
   { label: "Treino", icon: Dumbbell, path: "/dashboard" },
   { label: "Alimentação", icon: Utensils, path: "/nutrition" },
   { label: "IA Trainer", icon: MessageCircle, path: "/trainer" },
-  { label: "Objetivos", icon: Target, path: "/goals" },
+  { label: "Lembretes", icon: Bell, path: "/reminders" },
   { label: "Perfil", icon: User, path: "/profile" },
 ];
 

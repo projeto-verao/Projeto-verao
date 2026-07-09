@@ -16,6 +16,7 @@ import Nutrition from "@/pages/Nutrition";
 import Goals from "@/pages/Goals";
 import History from "@/pages/History";
 import Profile from "@/pages/Profile";
+import Reminders from "@/pages/Reminders";
 import NotFound from "@/pages/NotFound";
 import Logout from "@/pages/Logout";
 
@@ -77,6 +78,9 @@ export default function App() {
           </Route>
           <Route path="/profile">
             <AuthGuard><Profile /></AuthGuard>
+          </Route>
+          <Route path="/reminders">
+            <AuthGuard><Reminders /></AuthGuard>
           </Route>
           
           <Route path="/processing" component={Processing} />
