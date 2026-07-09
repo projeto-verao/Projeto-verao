@@ -14,6 +14,7 @@ build/
 .env.test.local
 .env.production.local
 .env.production
+client/.env.production
 
 # IDE and editor files
 .vscode/
