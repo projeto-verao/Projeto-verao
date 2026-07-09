@@ -111,13 +111,13 @@ export async function getActiveWorkout(userId: number) {
   if (!db) {
     // Tentar buscar do Firestore como fallback
     const firebaseResult = await firebaseDb.getActiveWorkoutFromFirestore(String(userId));
-    if (firebaseResult) {
+    if (firebaseResult && 'isActive' in firebaseResult) {
       return {
-        id: parseInt(firebaseResult.id) || 0,
+        id: 0,
         userId,
-        title: firebaseResult.title,
-        content: firebaseResult.content,
-        isActive: firebaseResult.isActive,
+        title: firebaseResult.title as string,
+        content: firebaseResult.content as string,
+        isActive: firebaseResult.isActive as boolean,
         createdAt: new Date(),
         updatedAt: new Date(),
       } as any;
@@ -145,7 +145,7 @@ export async function createWorkout(workout: InsertWorkout) {
     );
     if (firebaseResult) {
       return {
-        id: parseInt(firebaseResult.id) || 0,
+        id: 0,
         ...workout,
         createdAt: new Date(),
         updatedAt: new Date(),
