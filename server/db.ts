@@ -111,13 +111,14 @@ export async function getActiveWorkout(userId: number) {
   if (!db) {
     // Tentar buscar do Firestore como fallback
     const firebaseResult = await firebaseDb.getActiveWorkoutFromFirestore(String(userId));
-    if (firebaseResult && 'isActive' in firebaseResult) {
+    if (firebaseResult) {
+      const data = firebaseResult as any;
       return {
         id: 0,
         userId,
-        title: firebaseResult.title as string,
-        content: firebaseResult.content as string,
-        isActive: firebaseResult.isActive as boolean,
+        title: data.title || "",
+        content: data.content || "",
+        isActive: !!data.isActive,
         createdAt: new Date(),
         updatedAt: new Date(),
       } as any;
