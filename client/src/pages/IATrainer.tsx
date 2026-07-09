@@ -1,9 +1,9 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import AppLayout from "@/components/AppLayout";
 import { geminiService } from "@/lib/gemini";
 import { firestoreService, ChatMessageEntry, BodyProgressEntry, StoredWorkout } from "@/hooks/useFirebaseFirestore";
-import { ArrowLeft, Send, Loader2, Camera, Upload, ChevronDown, RotateCcw, Sparkles } from "lucide-react";
+import { ArrowLeft, Send, Loader2, Camera, Upload, ChevronDown, RotateCcw, Sparkles, Info } from "lucide-react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 import { Streamdown } from "streamdown";
@@ -47,6 +47,11 @@ export default function IATrainer() {
 
   useEffect(() => { if (user) loadChat(); }, [user, loadChat]);
 
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+  useEffect(() => { scrollToBottom(); }, [chatHistory]);
+
   const handleSend = async () => {
     if (!message.trim() || sending || !user) return;
     const userMsg = message.trim();
@@ -65,12 +70,16 @@ export default function IATrainer() {
     try {
       await firestoreService.addChatMessage(user.uid, "user", userMsg);
 
-      // Contexto do treino ativo para respostas mais precisas
+      // Contexto do treino ativo para que a IA possa alterá-lo
       let workoutContext: string | undefined;
+      let activeWorkout: StoredWorkout | null = null;
       try {
-        const workout = await firestoreService.getActiveWorkout(user.uid);
-        if (workout) {
-          workoutContext = `${workout.title}: ${workout.days.map(d => `Dia ${d.dayNumber} — ${d.title} (${d.exercises.map(e => e.name).join(", ")})`).join("; ")}`;
+        activeWorkout = await firestoreService.getActiveWorkout(user.uid);
+        if (activeWorkout) {
+          workoutContext = JSON.stringify({
+            title: activeWorkout.title,
+            days: activeWorkout.days
+          });
         }
       } catch { /* sem treino */ }
 
@@ -79,8 +88,24 @@ export default function IATrainer() {
         content: m.content,
       }));
 
-      const reply = await geminiService.chat(historyForAI, profile as any, workoutContext);
-      await firestoreService.addChatMessage(user.uid, "assistant", reply);
+      const response = await geminiService.chat(historyForAI, profile as any, workoutContext);
+      
+      // Se a IA alterou o treino, salvar no Firestore
+      if (response.updatedWorkout) {
+        await firestoreService.createWorkout(user.uid, {
+          title: response.updatedWorkout.title,
+          days: response.updatedWorkout.days as any,
+          changeDescription: response.explanation || "Alteração solicitada via chat"
+        });
+        toast.success("Treino atualizado com sucesso!");
+      }
+
+      // Adiciona explicação se houver
+      const fullReply = response.explanation 
+        ? `${response.reply}\n\n> **O que mudou:** ${response.explanation}`
+        : response.reply;
+
+      await firestoreService.addChatMessage(user.uid, "assistant", fullReply);
       await loadChat();
     } catch (err) {
       console.error("Erro no chat:", err);
@@ -120,6 +145,7 @@ export default function IATrainer() {
   }, [profile]);
 
   const handleSaveProfile = async () => {
+    if (!user) return;
     setSavingProfile(true);
     try {
       await updateProfile({
@@ -133,467 +159,342 @@ export default function IATrainer() {
         daysPerWeek: parseInt(profileForm.daysPerWeek) || undefined,
         minutesPerSession: parseInt(profileForm.minutesPerSession) || undefined,
         gymType: profileForm.gymType,
-        physicalRestrictions: profileForm.physicalRestrictions || undefined,
-        preferredExercises: profileForm.preferredExercises || undefined,
-        avoidedExercises: profileForm.avoidedExercises || undefined,
-      } as any);
+        physicalRestrictions: profileForm.physicalRestrictions,
+        preferredExercises: profileForm.preferredExercises,
+        avoidedExercises: profileForm.avoidedExercises,
+      });
       toast.success("Perfil atualizado!");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao salvar perfil.");
+      toast.error("Erro ao salvar perfil.");
     } finally {
       setSavingProfile(false);
     }
   };
 
-  // ── Evolution state ─────────────────────────────────────────────────────────
-  const [bodyHistory, setBodyHistory] = useState<BodyProgressEntry[]>([]);
-  const [savingProgress, setSavingProgress] = useState(false);
+  // ── Evolução state ──────────────────────────────────────────────────────────
+  const [evolutionHistory, setEvolutionHistory] = useState<BodyProgressEntry[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState<any>(null);
-  const [evoForm, setEvoForm] = useState({ weightKg: "", bodyFatPercent: "", chestCm: "", waistCm: "", armCm: "", thighCm: "", notes: "" });
-  const [evoPhotoPreview, setEvoPhotoPreview] = useState<string | null>(null);
 
-  const loadBodyHistory = useCallback(async () => {
+  const loadEvolution = useCallback(async () => {
     if (!user) return;
-    try {
-      const history = await firestoreService.getBodyProgressHistory(user.uid);
-      setBodyHistory(history);
-    } catch (err) {
-      console.error("Erro ao carregar histórico corporal:", err);
-    }
+    const history = await firestoreService.getBodyProgressHistory(user.uid);
+    setEvolutionHistory(history);
   }, [user]);
 
-  useEffect(() => { if (user) loadBodyHistory(); }, [user, loadBodyHistory]);
+  useEffect(() => { if (user) loadEvolution(); }, [user, loadEvolution]);
 
-  const handleEvoPhoto = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = e => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX = 1024;
-        let { width, height } = img;
-        if (width > height && width > MAX) { height *= MAX / width; width = MAX; }
-        else if (height > MAX) { width *= MAX / height; height = MAX; }
-        canvas.width = width;
-        canvas.height = height;
-        canvas.getContext('2d')?.drawImage(img, 0, 0, width, height);
-        setEvoPhotoPreview(canvas.toDataURL('image/jpeg', 0.8));
-      };
-      img.src = e.target?.result as string;
-    };
-    reader.readAsDataURL(file);
-  };
+  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
 
-  const handleSaveProgress = async () => {
-    if (!user) return;
-    setSavingProgress(true);
-    try {
-      await firestoreService.addBodyProgress(user.uid, {
-        weightKg: evoForm.weightKg ? parseFloat(evoForm.weightKg) : undefined,
-        bodyFatPercent: evoForm.bodyFatPercent ? parseFloat(evoForm.bodyFatPercent) : undefined,
-        chestCm: evoForm.chestCm ? parseFloat(evoForm.chestCm) : undefined,
-        waistCm: evoForm.waistCm ? parseFloat(evoForm.waistCm) : undefined,
-        armCm: evoForm.armCm ? parseFloat(evoForm.armCm) : undefined,
-        thighCm: evoForm.thighCm ? parseFloat(evoForm.thighCm) : undefined,
-        notes: evoForm.notes || undefined,
-      });
-      toast.success("Registro salvo!");
-      setEvoForm({ weightKg: "", bodyFatPercent: "", chestCm: "", waistCm: "", armCm: "", thighCm: "", notes: "" });
-      await loadBodyHistory();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao salvar registro.");
-    } finally {
-      setSavingProgress(false);
-    }
-  };
-
-  const handleAnalyze = async () => {
-    const photo = evoPhotoPreview || profile?.photoUrl;
-    if (!photo) {
-      toast.info("Envie uma foto primeiro para a IA analisar!");
-      return;
-    }
     setAnalyzing(true);
     try {
-      const result = await geminiService.analyzeBody(photo, profile as any);
-      setAnalysisResult(result);
-      toast.success("Análise corporal concluída!");
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64 = reader.result as string;
+        const analysis = await geminiService.analyzeBody(base64, profile as any);
+        
+        await firestoreService.addBodyProgress(user.uid, {
+          photoUrl: base64,
+          bodyFatPercent: parseFloat(analysis.bfEstimate) || undefined,
+          notes: `${analysis.summary}\n\nDica: ${analysis.tip}`,
+          weightKg: profile?.weightKg,
+        });
+        
+        toast.success("Análise concluída!");
+        loadEvolution();
+      };
+      reader.readAsDataURL(file);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao analisar evolução.");
+      toast.error("Erro ao analisar foto.");
     } finally {
       setAnalyzing(false);
     }
   };
 
-  // ── Workout history state ───────────────────────────────────────────────────
+  // ── Histórico state ─────────────────────────────────────────────────────────
   const [workoutVersions, setWorkoutVersions] = useState<StoredWorkout[]>([]);
-  const [restoring, setRestoring] = useState(false);
 
   const loadVersions = useCallback(async () => {
     if (!user) return;
-    try {
-      const versions = await firestoreService.listWorkouts(user.uid);
-      setWorkoutVersions(versions);
-    } catch (err) {
-      console.error("Erro ao carregar versões:", err);
-    }
+    const versions = await firestoreService.listWorkouts(user.uid);
+    setWorkoutVersions(versions);
   }, [user]);
 
   useEffect(() => { if (user) loadVersions(); }, [user, loadVersions]);
 
   const handleRestore = async (workoutId: string) => {
     if (!user) return;
-    setRestoring(true);
     try {
       await firestoreService.restoreWorkout(user.uid, workoutId);
       toast.success("Treino restaurado!");
-      await loadVersions();
+      loadVersions();
     } catch (err) {
       toast.error("Erro ao restaurar treino.");
-    } finally {
-      setRestoring(false);
     }
   };
 
-  useEffect(() => {
-    if (activeTab === "chat") {
-      setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
-    }
-  }, [chatHistory, activeTab]);
-
-  const setP = (f: string, v: string) => setProfileForm(prev => ({ ...prev, [f]: v }));
-  const setE = (f: string, v: string) => setEvoForm(prev => ({ ...prev, [f]: v }));
-
   return (
-    <AppLayout>
-      {/* Header */}
-      <div className="page-header">
-        <button onClick={() => navigate("/dashboard")} className="mr-3 text-gray-500">
-          <ArrowLeft size={22} />
-        </button>
-        <h1 className="font-semibold text-gray-900 text-lg">IA Personal Trainer</h1>
-      </div>
-
-      {/* Tabs */}
-      <div className="tab-bar">
-        {(["chat", "perfil", "evolucao", "historico"] as Tab[]).map(tab => (
-          <button
-            key={tab}
-            className={`tab-item ${activeTab === tab ? "active" : ""}`}
-            onClick={() => setActiveTab(tab)}
-          >
-            {tab === "chat" ? "Chat" : tab === "perfil" ? "Perfil" : tab === "evolucao" ? "Evolução" : "Histórico"}
-          </button>
-        ))}
-      </div>
-
-      {/* ── CHAT TAB ── */}
-      {activeTab === "chat" && (
-        <div className="flex flex-col" style={{ height: "calc(100dvh - 200px)" }}>
-          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-            {!chatHistory || chatHistory.length === 0 ? (
-              <div className="empty-state">
-                <p className="text-gray-500 text-center text-sm">
-                  Pergunte sobre exercícios, alimentação ou peça para ajustar seu treino.
-                </p>
-              </div>
-            ) : (
-              chatHistory.map(msg => (
-                <div key={msg.id} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                  <div className={msg.role === "user" ? "chat-bubble-user" : "chat-bubble-ai"}>
-                    {msg.role === "assistant" ? (
-                      <Streamdown>{msg.content}</Streamdown>
-                    ) : (
-                      msg.content
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
-            {sending && (
-              <div className="flex justify-start">
-                <div className="chat-bubble-ai flex items-center gap-2">
-                  <Loader2 size={14} className="animate-spin" />
-                  <span className="text-gray-500 text-sm">Pensando...</span>
-                </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Input */}
-          <div className="px-4 py-3 border-t border-gray-100 flex gap-2">
-            <input
-              className="app-input flex-1"
-              placeholder="Pergunte algo ao seu personal trainer..."
-              value={message}
-              onChange={e => setMessage(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && !e.shiftKey && handleSend()}
-            />
+    <AppLayout title="Coach IA">
+      <div className="flex flex-col h-[calc(100vh-12rem)]">
+        {/* Tabs */}
+        <div className="flex bg-gray-100 p-1 rounded-xl mb-4">
+          {(["chat", "perfil", "evolucao", "historico"] as Tab[]).map(tab => (
             <button
-              onClick={handleSend}
-              disabled={!message.trim() || sending}
-              className="w-11 h-11 bg-black rounded-xl flex items-center justify-center disabled:opacity-40 flex-shrink-0"
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${
+                activeTab === tab ? "bg-white text-primary shadow-sm" : "text-gray-500 hover:text-gray-700"
+              }`}
             >
-              <Send size={18} color="white" />
+              {tab.charAt(0).toUpperCase() + tab.slice(1)}
             </button>
-          </div>
+          ))}
         </div>
-      )}
 
-      {/* ── PERFIL TAB ── */}
-      {activeTab === "perfil" && (
-        <div className="px-5 py-4 space-y-4">
-          <p className="text-sm text-gray-500">Atualize seus dados para recomendações mais precisas.</p>
+        {/* Tab Content */}
+        <div className="flex-1 overflow-y-auto bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+          {activeTab === "chat" && (
+            <div className="flex flex-col h-full">
+              <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2 custom-scrollbar">
+                {chatHistory.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full text-center p-8">
+                    <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-4">
+                      <Sparkles className="text-primary w-8 h-8" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Seu Personal Trainer IA</h3>
+                    <p className="text-gray-500 text-sm max-w-xs">
+                      Pergunte sobre exercícios, alimentação ou peça para ajustar seu treino.
+                    </p>
+                  </div>
+                ) : (
+                  chatHistory.map((msg) => (
+                    <div
+                      key={msg.id}
+                      className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                    >
+                      <div
+                        className={`max-w-[85%] p-3 rounded-2xl text-sm ${
+                          msg.role === "user"
+                            ? "bg-primary text-white rounded-tr-none"
+                            : "bg-gray-100 text-gray-800 rounded-tl-none"
+                        }`}
+                      >
+                        <Streamdown>{msg.content}</Streamdown>
+                      </div>
+                    </div>
+                  ))
+                )}
+                {sending && (
+                  <div className="flex justify-start">
+                    <div className="bg-gray-100 p-3 rounded-2xl rounded-tl-none flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                      <span className="text-xs text-gray-500">O Coach está pensando...</span>
+                    </div>
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
+              </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Nome</label>
-            <input className="app-input" value={profileForm.name} onChange={e => setP("name", e.target.value)} />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Idade</label>
-              <input className="app-input" type="number" value={profileForm.age} onChange={e => setP("age", e.target.value)} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Sexo</label>
-              <div className="relative">
-                <select className="app-input appearance-none pr-8" value={profileForm.sex} onChange={e => setP("sex", e.target.value)}>
-                  {["Masculino", "Feminino", "Outro"].map(o => <option key={o}>{o}</option>)}
-                </select>
-                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              <div className="flex gap-2 items-center bg-gray-50 p-2 rounded-xl border border-gray-200">
+                <input
+                  type="text"
+                  value={message}
+                  onChange={e => setMessage(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && !e.shiftKey && handleSend()}
+                  placeholder="Peça para mudar um exercício..."
+                  className="flex-1 bg-transparent border-none focus:ring-0 text-sm p-2"
+                  disabled={sending}
+                />
+                <button
+                  onClick={handleSend}
+                  disabled={!message.trim() || sending}
+                  className="p-2 bg-primary text-white rounded-lg disabled:opacity-50 transition-all hover:scale-105 active:scale-95"
+                >
+                  <Send size={18} />
+                </button>
               </div>
             </div>
-          </div>
+          )}
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Altura (cm)</label>
-              <input className="app-input" type="number" value={profileForm.heightCm} onChange={e => setP("heightCm", e.target.value)} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Peso (kg)</label>
-              <input className="app-input" type="number" value={profileForm.weightKg} onChange={e => setP("weightKg", e.target.value)} />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Objetivo</label>
-            <div className="relative">
-              <select className="app-input appearance-none pr-8" value={profileForm.goal} onChange={e => setP("goal", e.target.value)}>
-                {GOALS.map(g => <option key={g}>{g}</option>)}
-              </select>
-              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Nível</label>
-            <div className="relative">
-              <select className="app-input appearance-none pr-8" value={profileForm.experienceLevel} onChange={e => setP("experienceLevel", e.target.value as typeof LEVELS[number])}>
-                {LEVELS.map(l => <option key={l}>{l}</option>)}
-              </select>
-              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Dias/semana</label>
-              <input className="app-input" type="number" min="1" max="7" value={profileForm.daysPerWeek} onChange={e => setP("daysPerWeek", e.target.value)} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Tempo (min)</label>
-              <input className="app-input" type="number" value={profileForm.minutesPerSession} onChange={e => setP("minutesPerSession", e.target.value)} />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Restrições físicas</label>
-            <textarea className="app-input resize-none" rows={2} value={profileForm.physicalRestrictions} onChange={e => setP("physicalRestrictions", e.target.value)} />
-          </div>
-
-          <button className="btn-primary" onClick={handleSaveProfile} disabled={savingProfile}>
-            {savingProfile ? <Loader2 size={16} className="animate-spin" /> : null}
-            Salvar perfil
-          </button>
-        </div>
-      )}
-
-      {/* ── EVOLUÇÃO TAB ── */}
-      {activeTab === "evolucao" && (
-        <div className="px-5 py-4 space-y-4">
-          {/* Photo upload */}
-          <div className="app-card">
-            <h3 className="font-semibold text-gray-900 mb-3">Analisar por foto</h3>
-            <div className="flex gap-2">
-              <button className="btn-secondary py-2 text-sm" onClick={() => cameraInputRef.current?.click()}>
-                <Camera size={15} /> Câmera
-              </button>
-              <button className="btn-secondary py-2 text-sm" onClick={() => fileInputRef.current?.click()}>
-                <Upload size={15} /> Álbum
-              </button>
-            </div>
-            {evoPhotoPreview && (
-              <img src={evoPhotoPreview} alt="Preview" className="mt-3 w-full h-40 object-cover rounded-lg" />
-            )}
-            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={e => e.target.files?.[0] && handleEvoPhoto(e.target.files[0])} />
-            <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={e => e.target.files?.[0] && handleEvoPhoto(e.target.files[0])} />
-          </div>
-
-          {/* Measurements */}
-          <div className="app-card">
-            <h3 className="font-semibold text-gray-900 mb-3">Registrar evolução</h3>
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
+          {activeTab === "perfil" && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Peso (kg)</label>
-                  <input className="app-input text-sm py-2" type="number" step="0.1" placeholder="75.5" value={evoForm.weightKg} onChange={e => setE("weightKg", e.target.value)} />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">% Gordura</label>
-                  <input className="app-input text-sm py-2" type="number" step="0.1" placeholder="20 (opcional)" value={evoForm.bodyFatPercent} onChange={e => setE("bodyFatPercent", e.target.value)} />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Peito (cm)</label>
-                  <input className="app-input text-sm py-2" type="number" value={evoForm.chestCm} onChange={e => setE("chestCm", e.target.value)} />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Cintura (cm)</label>
-                  <input className="app-input text-sm py-2" type="number" value={evoForm.waistCm} onChange={e => setE("waistCm", e.target.value)} />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Braço (cm)</label>
-                  <input className="app-input text-sm py-2" type="number" value={evoForm.armCm} onChange={e => setE("armCm", e.target.value)} />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Coxa (cm)</label>
-                  <input className="app-input text-sm py-2" type="number" value={evoForm.thighCm} onChange={e => setE("thighCm", e.target.value)} />
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Observações</label>
-                <textarea className="app-input text-sm resize-none" rows={2} value={evoForm.notes} onChange={e => setE("notes", e.target.value)} />
-              </div>
-            </div>
-
-            <div className="flex gap-2 mt-4">
-              <button className="btn-primary py-2.5 text-sm" onClick={handleSaveProgress} disabled={savingProgress}>
-                {savingProgress ? <Loader2 size={14} className="animate-spin" /> : null}
-                Salvar registro
-              </button>
-              <button className="btn-secondary py-2.5 text-sm" onClick={handleAnalyze} disabled={analyzing}>
-                {analyzing ? <Loader2 size={14} className="animate-spin" /> : null}
-                Gerar análise
-              </button>
-            </div>
-
-            {analysisResult && (
-              <div className="mt-4 p-4 bg-black/5 border border-black/10 rounded-xl space-y-3 animate-in fade-in slide-in-from-top-2">
-                <div className="flex items-center gap-2 text-black font-bold text-xs uppercase tracking-wider">
-                  <Sparkles size={14} /> Avaliação Física IA
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Nome</label>
+                  <input
+                    type="text"
+                    value={profileForm.name}
+                    onChange={e => setProfileForm(prev => ({ ...prev, name: e.target.value }))}
+                    className="w-full app-input"
+                  />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="bg-white p-2 rounded-lg border border-black/5">
-                    <p className="text-[10px] text-gray-400 font-bold uppercase">Gordura Est.</p>
-                    <p className="text-lg font-black text-black">{analysisResult.bfEstimate}</p>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Idade</label>
+                    <input
+                      type="number"
+                      value={profileForm.age}
+                      onChange={e => setProfileForm(prev => ({ ...prev, age: e.target.value }))}
+                      className="w-full app-input"
+                    />
                   </div>
-                  <div className="bg-white p-2 rounded-lg border border-black/5">
-                    <p className="text-[10px] text-gray-400 font-bold uppercase">Massa Musc.</p>
-                    <p className="text-lg font-black text-black">{analysisResult.muscleLevel}</p>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Sexo</label>
+                    <select
+                      value={profileForm.sex}
+                      onChange={e => setProfileForm(prev => ({ ...prev, sex: e.target.value }))}
+                      className="w-full app-input"
+                    >
+                      <option>Masculino</option>
+                      <option>Feminino</option>
+                      <option>Outro</option>
+                    </select>
                   </div>
                 </div>
-                <p className="text-xs text-gray-700 leading-relaxed">
-                  {analysisResult.summary}
-                </p>
-                <div className="pt-2 border-t border-black/5">
-                  <p className="text-[10px] font-bold text-gray-400 uppercase">Dica do Personal</p>
-                  <p className="text-xs text-gray-600 italic">"{analysisResult.tip}"</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Altura (cm)</label>
+                    <input
+                      type="number"
+                      value={profileForm.heightCm}
+                      onChange={e => setProfileForm(prev => ({ ...prev, heightCm: e.target.value }))}
+                      className="w-full app-input"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Peso (kg)</label>
+                    <input
+                      type="number"
+                      value={profileForm.weightKg}
+                      onChange={e => setProfileForm(prev => ({ ...prev, weightKg: e.target.value }))}
+                      className="w-full app-input"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Objetivo</label>
+                  <select
+                    value={profileForm.goal}
+                    onChange={e => setProfileForm(prev => ({ ...prev, goal: e.target.value }))}
+                    className="w-full app-input"
+                  >
+                    {GOALS.map(g => <option key={g}>{g}</option>)}
+                  </select>
                 </div>
               </div>
-            )}
-          </div>
-
-          {/* History */}
-          <div>
-            <h3 className="font-semibold text-gray-900 mb-3">Histórico de medidas</h3>
-            {!bodyHistory || bodyHistory.length === 0 ? (
-              <div className="empty-state py-8">
-                <p className="text-gray-400 text-sm">Nenhum registro ainda</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {bodyHistory.slice(0, 10).map(record => (
-                  <div key={record.id} className="app-card py-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-gray-900">
-                        {new Date(record.createdAt.toMillis()).toLocaleDateString("pt-BR")}
-                      </span>
-                      <span className="text-sm text-gray-500">
-                        {record.weightKg ? `${record.weightKg}kg` : "—"}
-                      </span>
-                    </div>
-                    {(record.chestCm || record.waistCm || record.armCm) && (
-                      <p className="text-xs text-gray-400 mt-1">
-                        {[record.chestCm && `Peito: ${record.chestCm}cm`, record.waistCm && `Cintura: ${record.waistCm}cm`, record.armCm && `Braço: ${record.armCm}cm`].filter(Boolean).join(" · ")}
-                      </p>
-                    )}
-                    {record.notes && (
-                      <p className="text-xs text-gray-400 mt-1 line-clamp-2">{record.notes}</p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ── HISTÓRICO TAB ── */}
-      {activeTab === "historico" && (
-        <div className="px-5 py-4">
-          <h3 className="font-semibold text-gray-900 mb-3">Versões de treino</h3>
-          {!workoutVersions || workoutVersions.length === 0 ? (
-            <div className="empty-state">
-              <p className="text-gray-400 text-sm">Nenhuma versão de treino ainda</p>
+              <button
+                onClick={handleSaveProfile}
+                disabled={savingProfile}
+                className="w-full btn-primary flex items-center justify-center gap-2"
+              >
+                {savingProfile ? <Loader2 className="w-4 h-4 animate-spin" /> : "Salvar Perfil"}
+              </button>
             </div>
-          ) : (
-            <div className="space-y-3">
-              {workoutVersions.map(version => (
-                <div key={version.id} className="app-card">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900 text-sm">
-                        {version.title} {version.isActive && <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold ml-1">ATIVO</span>}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-0.5">{new Date(version.createdAt.toMillis()).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
-                      {version.changeDescription && (
-                        <p className="text-xs text-gray-400 mt-1 truncate">{version.changeDescription}</p>
-                      )}
-                    </div>
-                    {!version.isActive && (
-                      <button
-                        onClick={() => handleRestore(version.id)}
-                        disabled={restoring}
-                        className="ml-3 flex items-center gap-1 text-xs font-medium text-gray-600 border border-gray-200 rounded-lg px-3 py-1.5 flex-shrink-0"
-                      >
-                        <RotateCcw size={12} />
-                        Restaurar
-                      </button>
-                    )}
-                  </div>
+          )}
+
+          {activeTab === "evolucao" && (
+            <div className="space-y-6">
+              <div className="bg-primary/5 border border-primary/10 rounded-2xl p-6 text-center">
+                <h3 className="font-semibold text-primary mb-2">Análise de Composição Corporal</h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  Tire uma foto de corpo inteiro para a IA estimar seu BF e massa muscular.
+                </p>
+                <div className="flex gap-2 justify-center">
+                  <button
+                    onClick={() => cameraInputRef.current?.click()}
+                    disabled={analyzing}
+                    className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors"
+                  >
+                    <Camera size={18} />
+                    Câmera
+                  </button>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={analyzing}
+                    className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors"
+                  >
+                    <Upload size={18} />
+                    Galeria
+                  </button>
                 </div>
-              ))}
+                <input type="file" ref={cameraInputRef} accept="image/*" capture="environment" className="hidden" onChange={handlePhotoSelect} />
+                <input type="file" ref={fileInputRef} accept="image/*" className="hidden" onChange={handlePhotoSelect} />
+              </div>
+
+              <div className="space-y-4">
+                <h3 className="font-semibold text-gray-900">Histórico de Fotos</h3>
+                {evolutionHistory.length === 0 ? (
+                  <p className="text-center text-gray-400 text-sm py-8">Nenhuma análise feita ainda.</p>
+                ) : (
+                  <div className="grid grid-cols-2 gap-4">
+                    {evolutionHistory.map(entry => (
+                      <div key={entry.id} className="bg-gray-50 rounded-xl overflow-hidden border border-gray-100">
+                        <img src={entry.photoUrl} alt="Evolução" className="w-full h-40 object-cover" />
+                        <div className="p-2">
+                          <div className="flex justify-between items-center mb-1">
+                            <span className="text-[10px] text-gray-400">
+                              {new Date(entry.createdAt.toMillis()).toLocaleDateString()}
+                            </span>
+                            <span className="text-xs font-bold text-primary">{entry.bodyFatPercent}% BF</span>
+                          </div>
+                          <p className="text-[10px] text-gray-600 line-clamp-2">{entry.notes}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === "historico" && (
+            <div className="space-y-4">
+              <h3 className="font-semibold text-gray-900 mb-3">Versões de treino</h3>
+              {!workoutVersions || workoutVersions.length === 0 ? (
+                <div className="text-center py-12">
+                  <RotateCcw className="w-12 h-12 text-gray-200 mx-auto mb-3" />
+                  <p className="text-gray-400 text-sm">Nenhuma versão de treino ainda</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {workoutVersions.map(version => (
+                    <div
+                      key={version.id}
+                      className={`p-4 rounded-2xl border transition-all ${
+                        version.isActive ? "border-primary bg-primary/5" : "border-gray-100 bg-white"
+                      }`}
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <h4 className="font-bold text-gray-900">{version.title}</h4>
+                          <span className="text-[10px] text-gray-400">
+                            v{version.version} • {new Date(version.createdAt.toMillis()).toLocaleDateString()}
+                          </span>
+                        </div>
+                        {version.isActive ? (
+                          <span className="px-2 py-0.5 bg-primary text-white text-[10px] font-bold rounded-full">ATIVO</span>
+                        ) : (
+                          <button
+                            onClick={() => handleRestore(version.id)}
+                            className="text-xs text-primary font-medium hover:underline"
+                          >
+                            Restaurar
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-600 italic flex items-start gap-1">
+                        <Info size={12} className="mt-0.5 shrink-0" />
+                        {version.changeDescription}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
-      )}
+      </div>
     </AppLayout>
   );
 }

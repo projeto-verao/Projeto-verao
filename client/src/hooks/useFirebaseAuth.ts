@@ -33,8 +33,6 @@ export interface UserProfile {
   physicalRestrictions?: string;
   preferredExercises?: string;
   avoidedExercises?: string;
-  /** Indica se o usuário completou o fluxo de onboarding */
-  onboardingCompleted?: boolean;
 }
 
 /**

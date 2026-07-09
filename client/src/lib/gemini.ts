@@ -139,6 +139,12 @@ export interface BodyAnalysis {
   tip: string;
 }
 
+export interface ChatResponse {
+  reply: string;
+  updatedWorkout?: GeneratedWorkout;
+  explanation?: string;
+}
+
 // ─── Serviços ─────────────────────────────────────────────────────────────────
 
 export const geminiService = {
@@ -255,22 +261,48 @@ Responda APENAS com JSON válido:
 
   /**
    * Chat com o personal trainer IA.
+   * Suporta alteração de treino se solicitado pelo usuário.
    */
   async chat(
     history: { role: "user" | "assistant"; content: string }[],
     profile?: ProfileData,
     workoutContext?: string
-  ): Promise<string> {
+  ): Promise<ChatResponse> {
     const systemPrompt = `Você é o Coach IA do Projeto Verão, um personal trainer virtual especializado, motivador e amigável. Responda em português do Brasil de forma clara e objetiva.
-${profile ? `\nPerfil do aluno: ${profile.name || ""}, ${profile.age || "?"} anos, objetivo: ${profile.goal || "?"}, nível: ${profile.experienceLevel || profile.experience || "?"}.` : ""}
-${workoutContext ? `\nTreino atual do aluno: ${workoutContext.slice(0, 2000)}` : ""}`;
+
+${profile ? `Perfil do aluno: ${profile.name || ""}, ${profile.age || "?"} anos, objetivo: ${profile.goal || "?"}, nível: ${profile.experienceLevel || profile.experience || "?"}.` : ""}
+${workoutContext ? `\nTREINO ATUAL DO ALUNO (JSON):\n${workoutContext}` : ""}
+
+INSTRUÇÕES ESPECIAIS:
+1. Se o aluno pedir para alterar o treino (ex: trocar exercício, mudar reps, adicionar dia), você deve:
+   a) Gerar o objeto JSON do treino COMPLETO atualizado.
+   b) Explicar o que mudou e por quê (ex: "Substituí o supino reto por halteres para reduzir a sobrecarga nos ombros").
+2. Se for apenas uma dúvida geral, responda normalmente.
+
+Sua resposta deve ser SEMPRE um JSON no seguinte formato:
+{
+  "reply": "Sua resposta amigável aqui. Se alterou o treino, mencione isso.",
+  "explanation": "Se alterou o treino, explique aqui o motivo técnico da mudança. Caso contrário, deixe null.",
+  "updatedWorkout": { ...objeto GeneratedWorkout completo apenas se houver alteração, caso contrário null... }
+}`;
 
     const contents: GeminiContent[] = history.slice(-20).map((m) => ({
       role: m.role === "assistant" ? "model" : "user",
       parts: [{ text: m.content }],
     }));
 
-    return callGemini(contents, systemPrompt);
+    const text = await callGemini(
+      contents,
+      systemPrompt,
+      true
+    );
+
+    const parsed = extractJson(text);
+    return {
+      reply: parsed.reply || "Desculpe, tive um problema ao processar sua resposta.",
+      updatedWorkout: parsed.updatedWorkout || undefined,
+      explanation: parsed.explanation || undefined,
+    };
   },
 
   /**
