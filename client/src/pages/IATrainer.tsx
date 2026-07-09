@@ -591,19 +591,35 @@ export default function IATrainer() {
                     {evolutionHistory.filter(e => e.photoUrl).map(entry => (
                       <div 
                         key={entry.id} 
-                        onClick={() => setSelectedEntry(entry)}
-                        className="bg-gray-50 rounded-xl overflow-hidden border border-gray-100 cursor-pointer hover:border-primary/30 transition-all active:scale-[0.98]"
+                        className="relative bg-gray-50 rounded-xl overflow-hidden border border-gray-100 group"
                       >
-                        <img src={entry.photoUrl} alt="Evolução" className="w-full h-40 object-cover" />
-                        <div className="p-2">
-                          <div className="flex justify-between items-center mb-1">
-                            <span className="text-[10px] text-gray-400">
-                              {new Date(entry.createdAt.toMillis()).toLocaleDateString()}
-                            </span>
-                            {entry.bodyFatPercent && <span className="text-xs font-bold text-primary">{entry.bodyFatPercent}% BF</span>}
+                        <div 
+                          onClick={() => setSelectedEntry(entry)}
+                          className="cursor-pointer hover:opacity-90 transition-all active:scale-[0.98]"
+                        >
+                          <img src={entry.photoUrl} alt="Evolução" className="w-full h-40 object-cover" />
+                          <div className="p-2">
+                            <div className="flex justify-between items-center mb-1">
+                              <span className="text-[10px] text-gray-400">
+                                {new Date(entry.createdAt.toMillis()).toLocaleDateString()}
+                              </span>
+                              {entry.bodyFatPercent && <span className="text-xs font-bold text-primary">{entry.bodyFatPercent}% BF</span>}
+                            </div>
+                            <p className="text-[10px] text-gray-600 line-clamp-2">{entry.notes}</p>
                           </div>
-                          <p className="text-[10px] text-gray-600 line-clamp-2">{entry.notes}</p>
                         </div>
+                        
+                        {/* Botão de exclusão direta na miniatura */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteEntry(entry.id);
+                          }}
+                          className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                          title="Excluir avaliação"
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -682,7 +698,7 @@ export default function IATrainer() {
 
         {/* Modal de Detalhes da Evolução (Fora das abas para garantir visibilidade) */}
         {selectedEntry && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
             <div className="bg-white w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
               <div className="flex items-center justify-between p-4 border-b">
                 <div>
