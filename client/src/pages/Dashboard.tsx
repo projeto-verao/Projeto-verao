@@ -5,7 +5,7 @@ import AppLayout from "@/components/AppLayout";
 import { geminiService } from "@/lib/gemini";
 import { firestoreService, StoredWorkout } from "@/hooks/useFirebaseFirestore";
 import {
-  Utensils, Target, RefreshCw, Loader2, ChevronRight, Timer, X, Sparkles, Activity, Trash2, CheckCircle2
+  Utensils, Target, RefreshCw, Loader2, ChevronRight, Timer, X, Sparkles, Activity, Trash2, CheckCircle2, CheckSquare
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -70,7 +70,7 @@ export default function Dashboard() {
       const generated = await geminiService.generateWorkout(profile as any);
       await firestoreService.createWorkout(user.uid, {
         title: generated.title,
-        days: generated.days,
+        days: generated.days as any,
         changeDescription: "Treino gerado pela IA",
       });
       toast.success("Novo treino gerado com sucesso!", { id: toastId });
@@ -114,11 +114,29 @@ export default function Dashboard() {
         duration: profile?.minutesPerSession || 60,
       });
       toast.success(`Treino do dia ${dayNumber} concluído! 🎉`);
+      
+      // Tarefa 2: Fechar automaticamente a tela do treino e limpar estado
+      setSelectedDay(null);
+      setCompletedSets({});
+      setRestTimer(null);
+      
       await loadData();
     } catch (err) {
       console.error("Erro ao registrar conclusão:", err);
       toast.error("Erro ao registrar conclusão do treino.");
     }
+  };
+
+  // ── Tarefa 3: Marcar todos os exercícios como concluídos ───────────────────
+  const handleMarkAllAsDone = (dayNumber: number, exercises: any[]) => {
+    const newCompleted = { ...completedSets };
+    exercises.forEach((ex, exIdx) => {
+      for (let sIdx = 0; sIdx < ex.sets; sIdx++) {
+        newCompleted[`${dayNumber}-${exIdx}-${sIdx}`] = true;
+      }
+    });
+    setCompletedSets(newCompleted);
+    toast.success("Todos os exercícios marcados como concluídos!");
   };
 
   // ── Timer de descanso ──────────────────────────────────────────────────────
@@ -135,8 +153,8 @@ export default function Dashboard() {
     return () => { if (timerIntervalRef.current) clearInterval(timerIntervalRef.current); };
   }, [restTimer]);
 
-  const toggleSet = (exerciseId: string, setIdx: number, restTime: string) => {
-    const key = `${exerciseId}-${setIdx}`;
+  const toggleSet = (dayNumber: number, exerciseIdx: number, setIdx: number, restTime: string) => {
+    const key = `${dayNumber}-${exerciseIdx}-${setIdx}`;
     const isNowCompleted = !completedSets[key];
     setCompletedSets(prev => ({ ...prev, [key]: isNowCompleted }));
     if (isNowCompleted) {
@@ -300,6 +318,15 @@ export default function Dashboard() {
 
                 {selectedDay === day.dayNumber && (
                   <div className="mt-8 space-y-5 animate-in fade-in slide-in-from-top-4 duration-500">
+                    {/* Tarefa 3: Botão Marcar todos como concluídos */}
+                    <button
+                      onClick={() => handleMarkAllAsDone(day.dayNumber, day.exercises)}
+                      className="w-full py-3 bg-gray-100 text-gray-700 rounded-2xl text-xs font-bold uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-gray-200 transition-colors"
+                    >
+                      <CheckSquare size={16} />
+                      Marcar todos como concluídos
+                    </button>
+
                     {day.exercises.map((ex, idx) => (
                       <div key={idx} className="bg-gray-50 rounded-3xl p-5 border border-gray-100">
                         <div className="flex justify-between items-start mb-4">
@@ -318,7 +345,7 @@ export default function Dashboard() {
                             return (
                               <button
                                 key={sIdx}
-                                onClick={() => toggleSet(`${day.dayNumber}-${idx}`, sIdx, ex.rest)}
+                                onClick={() => toggleSet(day.dayNumber, idx, sIdx, ex.rest)}
                                 className={`w-11 h-11 rounded-2xl border-2 flex items-center justify-center text-xs font-black transition-all ${
                                   isDone ? "bg-green-500 border-green-500 text-white shadow-lg shadow-green-200" : "bg-white border-gray-100 text-gray-300 hover:border-black hover:text-black"
                                 }`}
