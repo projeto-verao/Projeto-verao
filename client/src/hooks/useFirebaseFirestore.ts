@@ -264,6 +264,10 @@ export const firestoreService = {
       .map((d) => ({ id: d.id, ...d.data() }) as BodyProgressEntry);
   },
 
+  async deleteBodyProgress(userId: string, entryId: string) {
+    await deleteDoc(doc(db, "users", userId, "bodyProgress", entryId));
+  },
+
   // ── Goals ──────────────────────────────────────────────────────────────────
 
   async getGoals(userId: string): Promise<GoalsData | null> {

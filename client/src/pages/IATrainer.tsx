@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import AppLayout from "@/components/AppLayout";
 import { geminiService } from "@/lib/gemini";
 import { firestoreService, ChatMessageEntry, BodyProgressEntry, StoredWorkout } from "@/hooks/useFirebaseFirestore";
-import { ArrowLeft, Send, Loader2, Camera, Upload, ChevronDown, RotateCcw, Sparkles, Info, Ruler, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Send, Loader2, Camera, Upload, ChevronDown, RotateCcw, Sparkles, Info, Ruler, CheckCircle2, X, Trash2 } from "lucide-react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 import { Streamdown } from "streamdown";
@@ -174,6 +174,7 @@ export default function IATrainer() {
   // ── Evolução state ──────────────────────────────────────────────────────────
   const [evolutionHistory, setEvolutionHistory] = useState<BodyProgressEntry[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
+  const [selectedEntry, setSelectedEntry] = useState<BodyProgressEntry | null>(null);
   
   // Tarefa 5: Form para medidas manuais (será preenchido pela IA)
   const [measurements, setMeasurements] = useState({
@@ -185,6 +186,18 @@ export default function IATrainer() {
     const history = await firestoreService.getBodyProgressHistory(user.uid);
     setEvolutionHistory(history);
   }, [user]);
+
+  const handleDeleteEntry = async (entryId: string) => {
+    if (!user || !window.confirm("Tem certeza que deseja excluir esta avaliação?")) return;
+    try {
+      await firestoreService.deleteBodyProgress(user.uid, entryId);
+      toast.success("Avaliação excluída com sucesso!");
+      setSelectedEntry(null);
+      loadEvolution();
+    } catch (err) {
+      toast.error("Erro ao excluir avaliação.");
+    }
+  };
 
   useEffect(() => { if (user) loadEvolution(); }, [user, loadEvolution]);
 
@@ -576,7 +589,11 @@ export default function IATrainer() {
                 ) : (
                   <div className="grid grid-cols-2 gap-4">
                     {evolutionHistory.filter(e => e.photoUrl).map(entry => (
-                      <div key={entry.id} className="bg-gray-50 rounded-xl overflow-hidden border border-gray-100">
+                      <div 
+                        key={entry.id} 
+                        onClick={() => setSelectedEntry(entry)}
+                        className="bg-gray-50 rounded-xl overflow-hidden border border-gray-100 cursor-pointer hover:border-primary/30 transition-all active:scale-[0.98]"
+                      >
                         <img src={entry.photoUrl} alt="Evolução" className="w-full h-40 object-cover" />
                         <div className="p-2">
                           <div className="flex justify-between items-center mb-1">
@@ -592,6 +609,84 @@ export default function IATrainer() {
                   </div>
                 )}
               </div>
+
+              {/* Modal de Detalhes da Evolução */}
+              {selectedEntry && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+                  <div className="bg-white w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+                    <div className="flex items-center justify-between p-4 border-b">
+                      <div>
+                        <h3 className="font-bold text-gray-900">Detalhes da Avaliação</h3>
+                        <p className="text-xs text-gray-400">{new Date(selectedEntry.createdAt.toMillis()).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                      </div>
+                      <button onClick={() => setSelectedEntry(null)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                        <X size={20} className="text-gray-500" />
+                      </button>
+                    </div>
+                    
+                    <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
+                      {selectedEntry.photoUrl && (
+                        <div className="rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
+                          <img src={selectedEntry.photoUrl} alt="Evolução" className="w-full object-contain bg-black max-h-[400px]" />
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="bg-primary/5 rounded-2xl p-3 text-center border border-primary/10">
+                          <span className="block text-[10px] font-bold text-primary uppercase mb-1">Peso</span>
+                          <span className="text-lg font-bold text-gray-900">{selectedEntry.weightKg || '--'} <small className="text-[10px] font-normal">kg</small></span>
+                        </div>
+                        <div className="bg-primary/5 rounded-2xl p-3 text-center border border-primary/10">
+                          <span className="block text-[10px] font-bold text-primary uppercase mb-1">BF</span>
+                          <span className="text-lg font-bold text-gray-900">{selectedEntry.bodyFatPercent || '--'} <small className="text-[10px] font-normal">%</small></span>
+                        </div>
+                        <div className="bg-primary/5 rounded-2xl p-3 text-center border border-primary/10">
+                          <span className="block text-[10px] font-bold text-primary uppercase mb-1">Cintura</span>
+                          <span className="text-lg font-bold text-gray-900">{selectedEntry.waistCm || '--'} <small className="text-[10px] font-normal">cm</small></span>
+                        </div>
+                        <div className="bg-gray-50 rounded-2xl p-3 text-center border border-gray-100">
+                          <span className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Peitoral</span>
+                          <span className="text-sm font-bold text-gray-900">{selectedEntry.chestCm || '--'} <small className="text-[10px] font-normal">cm</small></span>
+                        </div>
+                        <div className="bg-gray-50 rounded-2xl p-3 text-center border border-gray-100">
+                          <span className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Braço</span>
+                          <span className="text-sm font-bold text-gray-900">{selectedEntry.armCm || '--'} <small className="text-[10px] font-normal">cm</small></span>
+                        </div>
+                        <div className="bg-gray-50 rounded-2xl p-3 text-center border border-gray-100">
+                          <span className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Coxa</span>
+                          <span className="text-sm font-bold text-gray-900">{selectedEntry.thighCm || '--'} <small className="text-[10px] font-normal">cm</small></span>
+                        </div>
+                      </div>
+
+                      <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                        <h4 className="text-xs font-bold text-gray-400 uppercase mb-3 flex items-center gap-2">
+                          <Info size={14} className="text-primary" />
+                          Análise da IA
+                        </h4>
+                        <div className="prose prose-sm text-gray-700 max-w-none">
+                          <Streamdown>{selectedEntry.notes || ""}</Streamdown>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-4 border-t bg-gray-50/50 flex gap-3">
+                      <button 
+                        onClick={() => handleDeleteEntry(selectedEntry.id)}
+                        className="flex-1 flex items-center justify-center gap-2 py-3 bg-red-50 text-red-600 rounded-xl text-sm font-bold hover:bg-red-100 transition-colors"
+                      >
+                        <Trash2 size={18} />
+                        Excluir Registro
+                      </button>
+                      <button 
+                        onClick={() => setSelectedEntry(null)}
+                        className="flex-1 py-3 bg-black text-white rounded-xl text-sm font-bold hover:bg-gray-900 transition-colors"
+                      >
+                        Fechar
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
