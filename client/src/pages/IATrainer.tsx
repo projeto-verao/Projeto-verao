@@ -309,7 +309,16 @@ export default function IATrainer() {
 
   const handleSaveMeasurements = async () => {
     if (!user) return;
+    
+    // Validação mínima: pelo menos um campo deve estar preenchido
+    const hasData = Object.values(measurements).some(v => v !== "");
+    if (!hasData) {
+      toast.error("Preencha pelo menos um campo para salvar sua evolução.");
+      return;
+    }
+
     setAnalyzing(true);
+    const toastId = toast.loading("Salvando sua evolução...");
     try {
       await firestoreService.addBodyProgress(user.uid, {
         weightKg: parseFloat(measurements.weightKg) || undefined,
@@ -318,13 +327,18 @@ export default function IATrainer() {
         waistCm: parseFloat(measurements.waistCm) || undefined,
         armCm: parseFloat(measurements.armCm) || undefined,
         thighCm: parseFloat(measurements.thighCm) || undefined,
-        notes: "Medidas inseridas manualmente/confirmadas da IA"
+        notes: "Evolução registrada manualmente."
       });
-      toast.success("Medidas salvas com sucesso!");
-      setMeasurements({ weightKg: "", bodyFatPercent: "", chestCm: "", waistCm: "", armCm: "", thighCm: "" });
+      
+      // Limpar campos após salvar
+      setMeasurements({
+        weightKg: "", bodyFatPercent: "", chestCm: "", waistCm: "", armCm: "", thighCm: ""
+      });
+      
+      toast.success("Evolução salva com sucesso!", { id: toastId });
       loadEvolution();
     } catch (err) {
-      toast.error("Erro ao salvar medidas.");
+      toast.error("Erro ao salvar evolução.", { id: toastId });
     } finally {
       setAnalyzing(false);
     }
@@ -588,7 +602,7 @@ export default function IATrainer() {
                   <p className="text-center text-gray-400 text-sm py-8">Nenhuma análise feita ainda.</p>
                 ) : (
                   <div className="grid grid-cols-2 gap-4">
-                    {evolutionHistory.filter(e => e.photoUrl).map(entry => (
+                    {evolutionHistory.map(entry => (
                       <div 
                         key={entry.id} 
                         className="relative bg-gray-50 rounded-xl overflow-hidden border border-gray-100 group"
@@ -597,12 +611,19 @@ export default function IATrainer() {
                           onClick={() => setSelectedEntry(entry)}
                           className="cursor-pointer hover:opacity-90 transition-all active:scale-[0.98]"
                         >
-                          <img src={entry.photoUrl} alt="Evolução" className="w-full h-40 object-cover" />
+                          {entry.photoUrl ? (
+                            <img src={entry.photoUrl} alt="Evolução" className="w-full h-40 object-cover" />
+                          ) : (
+                            <div className="w-full h-40 bg-gray-100 flex flex-col items-center justify-center gap-2 text-gray-400">
+                              <Ruler size={32} />
+                              <span className="text-[10px] font-bold uppercase tracking-widest">Apenas Medidas</span>
+                            </div>
+                          )}
                           <div className="p-2">
                             <div className="flex justify-between items-center mb-1">
-                              <span className="text-[10px] text-gray-400">
-                                {new Date(entry.createdAt.toMillis()).toLocaleDateString()}
-                              </span>
+                            <span className="text-[10px] text-gray-400">
+                              {new Date(entry.createdAt.toMillis()).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                            </span>
                               {entry.bodyFatPercent && <span className="text-xs font-bold text-primary">{entry.bodyFatPercent}% BF</span>}
                             </div>
                             <p className="text-[10px] text-gray-600 line-clamp-2">{entry.notes}</p>
@@ -703,7 +724,15 @@ export default function IATrainer() {
               <div className="flex items-center justify-between p-4 border-b">
                 <div>
                   <h3 className="font-bold text-gray-900">Detalhes da Avaliação</h3>
-                  <p className="text-xs text-gray-400">{new Date(selectedEntry.createdAt.toMillis()).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                        <p className="text-xs text-gray-400">
+                          {new Date(selectedEntry.createdAt.toMillis()).toLocaleString('pt-BR', { 
+                            day: 'numeric', 
+                            month: 'long', 
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </p>
                 </div>
                 <button onClick={() => setSelectedEntry(null)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
                   <X size={20} className="text-gray-500" />
@@ -755,21 +784,21 @@ export default function IATrainer() {
                 </div>
               </div>
 
-              <div className="p-6 border-t bg-white flex flex-col gap-3">
-                <button 
-                  onClick={() => handleDeleteEntry(selectedEntry.id)}
-                  className="w-full flex items-center justify-center gap-2 py-4 bg-red-500 text-white rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-red-600 transition-all active:scale-[0.98] shadow-lg shadow-red-200"
-                >
-                  <Trash2 size={18} />
-                  Excluir esta avaliação
-                </button>
-                <button 
-                  onClick={() => setSelectedEntry(null)}
-                  className="w-full py-4 bg-gray-100 text-gray-500 rounded-2xl text-sm font-bold hover:bg-gray-200 transition-all"
-                >
-                  Voltar
-                </button>
-              </div>
+                    <div className="p-6 pb-10 border-t bg-white flex flex-col gap-3 sticky bottom-0 mt-auto">
+                      <button 
+                        onClick={() => handleDeleteEntry(selectedEntry.id)}
+                        className="w-full flex items-center justify-center gap-2 py-4 bg-red-500 text-white rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-red-600 transition-all active:scale-[0.98] shadow-lg shadow-red-200"
+                      >
+                        <Trash2 size={18} />
+                        Excluir esta avaliação
+                      </button>
+                      <button 
+                        onClick={() => setSelectedEntry(null)}
+                        className="w-full py-4 bg-gray-100 text-gray-500 rounded-2xl text-sm font-bold hover:bg-gray-200 transition-all"
+                      >
+                        Voltar
+                      </button>
+                    </div>
             </div>
           </div>
         )}
