@@ -610,85 +610,153 @@ export default function IATrainer() {
                 )}
               </div>
 
-              {/* Modal de Detalhes da Evolução */}
-              {selectedEntry && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-                  <div className="bg-white w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
-                    <div className="flex items-center justify-between p-4 border-b">
-                      <div>
-                        <h3 className="font-bold text-gray-900">Detalhes da Avaliação</h3>
-                        <p className="text-xs text-gray-400">{new Date(selectedEntry.createdAt.toMillis()).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
-                      </div>
-                      <button onClick={() => setSelectedEntry(null)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                        <X size={20} className="text-gray-500" />
-                      </button>
-                    </div>
-                    
-                    <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
-                      {selectedEntry.photoUrl && (
-                        <div className="rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
-                          <img src={selectedEntry.photoUrl} alt="Evolução" className="w-full object-contain bg-black max-h-[400px]" />
-                        </div>
-                      )}
+            </div>
+          )}
 
-                      <div className="grid grid-cols-3 gap-3">
-                        <div className="bg-primary/5 rounded-2xl p-3 text-center border border-primary/10">
-                          <span className="block text-[10px] font-bold text-primary uppercase mb-1">Peso</span>
-                          <span className="text-lg font-bold text-gray-900">{selectedEntry.weightKg || '--'} <small className="text-[10px] font-normal">kg</small></span>
+          {activeTab === "historico" && (
+            <div className="space-y-4">
+              <h3 className="font-semibold text-gray-900 mb-3">Versões de treino</h3>
+              {!workoutVersions || workoutVersions.length === 0 ? (
+                <div className="text-center py-12">
+                  <RotateCcw className="w-12 h-12 text-gray-200 mx-auto mb-3" />
+                  <p className="text-gray-400 text-sm">Nenhuma versão de treino ainda</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {workoutVersions.map(version => (
+                    <div
+                      key={version.id}
+                      className={`p-4 rounded-2xl border transition-all ${
+                        version.isActive ? "border-primary bg-primary/5" : "border-gray-100 bg-white"
+                      }`}
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <h4 className="font-bold text-gray-900">{version.title}</h4>
+                          <span className="text-[10px] text-gray-400">
+                            v{version.version} • {new Date(version.createdAt.toMillis()).toLocaleDateString()}
+                          </span>
                         </div>
-                        <div className="bg-primary/5 rounded-2xl p-3 text-center border border-primary/10">
-                          <span className="block text-[10px] font-bold text-primary uppercase mb-1">BF</span>
-                          <span className="text-lg font-bold text-gray-900">{selectedEntry.bodyFatPercent || '--'} <small className="text-[10px] font-normal">%</small></span>
-                        </div>
-                        <div className="bg-primary/5 rounded-2xl p-3 text-center border border-primary/10">
-                          <span className="block text-[10px] font-bold text-primary uppercase mb-1">Cintura</span>
-                          <span className="text-lg font-bold text-gray-900">{selectedEntry.waistCm || '--'} <small className="text-[10px] font-normal">cm</small></span>
-                        </div>
-                        <div className="bg-gray-50 rounded-2xl p-3 text-center border border-gray-100">
-                          <span className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Peitoral</span>
-                          <span className="text-sm font-bold text-gray-900">{selectedEntry.chestCm || '--'} <small className="text-[10px] font-normal">cm</small></span>
-                        </div>
-                        <div className="bg-gray-50 rounded-2xl p-3 text-center border border-gray-100">
-                          <span className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Braço</span>
-                          <span className="text-sm font-bold text-gray-900">{selectedEntry.armCm || '--'} <small className="text-[10px] font-normal">cm</small></span>
-                        </div>
-                        <div className="bg-gray-50 rounded-2xl p-3 text-center border border-gray-100">
-                          <span className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Coxa</span>
-                          <span className="text-sm font-bold text-gray-900">{selectedEntry.thighCm || '--'} <small className="text-[10px] font-normal">cm</small></span>
+                        <div className="flex items-center gap-3">
+                          {version.isActive ? (
+                            <span className="px-2 py-0.5 bg-primary text-white text-[10px] font-bold rounded-full">ATIVO</span>
+                          ) : (
+                            <button
+                              onClick={() => handleRestore(version.id)}
+                              className="text-xs text-primary font-medium hover:underline"
+                            >
+                              Restaurar
+                            </button>
+                          )}
+                          {!version.isActive && (
+                            <button
+                              onClick={async () => {
+                                if (!user || !window.confirm("Deseja excluir permanentemente esta versão de treino?")) return;
+                                try {
+                                  await firestoreService.deleteWorkout(user.uid, version.id);
+                                  toast.success("Versão excluída!");
+                                  loadWorkouts();
+                                } catch (err) {
+                                  toast.error("Erro ao excluir.");
+                                }
+                              }}
+                              className="p-1.5 text-gray-300 hover:text-red-500 transition-colors"
+                              title="Excluir versão"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
                         </div>
                       </div>
-
-                      <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
-                        <h4 className="text-xs font-bold text-gray-400 uppercase mb-3 flex items-center gap-2">
-                          <Info size={14} className="text-primary" />
-                          Análise da IA
-                        </h4>
-                        <div className="prose prose-sm text-gray-700 max-w-none">
-                          <Streamdown>{selectedEntry.notes || ""}</Streamdown>
-                        </div>
-                      </div>
+                      <p className="text-xs text-gray-600 italic flex items-start gap-1">
+                        <Info size={12} className="mt-0.5 shrink-0" />
+                        {version.changeDescription}
+                      </p>
                     </div>
-
-                    <div className="p-6 border-t bg-white flex flex-col gap-3">
-                      <button 
-                        onClick={() => handleDeleteEntry(selectedEntry.id)}
-                        className="w-full flex items-center justify-center gap-2 py-4 bg-red-500 text-white rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-red-600 transition-all active:scale-[0.98] shadow-lg shadow-red-200"
-                      >
-                        <Trash2 size={18} />
-                        Excluir esta avaliação
-                      </button>
-                      <button 
-                        onClick={() => setSelectedEntry(null)}
-                        className="w-full py-4 bg-gray-100 text-gray-500 rounded-2xl text-sm font-bold hover:bg-gray-200 transition-all"
-                      >
-                        Voltar
-                      </button>
-                    </div>
-                  </div>
+                  ))}
                 </div>
               )}
             </div>
           )}
+        </div>
+
+        {/* Modal de Detalhes da Evolução (Fora das abas para garantir visibilidade) */}
+        {selectedEntry && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+              <div className="flex items-center justify-between p-4 border-b">
+                <div>
+                  <h3 className="font-bold text-gray-900">Detalhes da Avaliação</h3>
+                  <p className="text-xs text-gray-400">{new Date(selectedEntry.createdAt.toMillis()).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                </div>
+                <button onClick={() => setSelectedEntry(null)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                  <X size={20} className="text-gray-500" />
+                </button>
+              </div>
+              
+              <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
+                {selectedEntry.photoUrl && (
+                  <div className="rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
+                    <img src={selectedEntry.photoUrl} alt="Evolução" className="w-full object-contain bg-black max-h-[400px]" />
+                  </div>
+                )}
+
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-primary/5 rounded-2xl p-3 text-center border border-primary/10">
+                    <span className="block text-[10px] font-bold text-primary uppercase mb-1">Peso</span>
+                    <span className="text-lg font-bold text-gray-900">{selectedEntry.weightKg || '--'} <small className="text-[10px] font-normal">kg</small></span>
+                  </div>
+                  <div className="bg-primary/5 rounded-2xl p-3 text-center border border-primary/10">
+                    <span className="block text-[10px] font-bold text-primary uppercase mb-1">BF</span>
+                    <span className="text-lg font-bold text-gray-900">{selectedEntry.bodyFatPercent || '--'} <small className="text-[10px] font-normal">%</small></span>
+                  </div>
+                  <div className="bg-primary/5 rounded-2xl p-3 text-center border border-primary/10">
+                    <span className="block text-[10px] font-bold text-primary uppercase mb-1">Cintura</span>
+                    <span className="text-lg font-bold text-gray-900">{selectedEntry.waistCm || '--'} <small className="text-[10px] font-normal">cm</small></span>
+                  </div>
+                  <div className="bg-gray-50 rounded-2xl p-3 text-center border border-gray-100">
+                    <span className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Peitoral</span>
+                    <span className="text-sm font-bold text-gray-900">{selectedEntry.chestCm || '--'} <small className="text-[10px] font-normal">cm</small></span>
+                  </div>
+                  <div className="bg-gray-50 rounded-2xl p-3 text-center border border-gray-100">
+                    <span className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Braço</span>
+                    <span className="text-sm font-bold text-gray-900">{selectedEntry.armCm || '--'} <small className="text-[10px] font-normal">cm</small></span>
+                  </div>
+                  <div className="bg-gray-50 rounded-2xl p-3 text-center border border-gray-100">
+                    <span className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Coxa</span>
+                    <span className="text-sm font-bold text-gray-900">{selectedEntry.thighCm || '--'} <small className="text-[10px] font-normal">cm</small></span>
+                  </div>
+                </div>
+
+                <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                  <h4 className="text-xs font-bold text-gray-400 uppercase mb-3 flex items-center gap-2">
+                    <Info size={14} className="text-primary" />
+                    Análise da IA
+                  </h4>
+                  <div className="prose prose-sm text-gray-700 max-w-none">
+                    <Streamdown>{selectedEntry.notes || ""}</Streamdown>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 border-t bg-white flex flex-col gap-3">
+                <button 
+                  onClick={() => handleDeleteEntry(selectedEntry.id)}
+                  className="w-full flex items-center justify-center gap-2 py-4 bg-red-500 text-white rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-red-600 transition-all active:scale-[0.98] shadow-lg shadow-red-200"
+                >
+                  <Trash2 size={18} />
+                  Excluir esta avaliação
+                </button>
+                <button 
+                  onClick={() => setSelectedEntry(null)}
+                  className="w-full py-4 bg-gray-100 text-gray-500 rounded-2xl text-sm font-bold hover:bg-gray-200 transition-all"
+                >
+                  Voltar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
           {activeTab === "historico" && (
             <div className="space-y-4">
