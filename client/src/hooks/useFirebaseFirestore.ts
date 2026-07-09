@@ -429,6 +429,8 @@ export const firestoreService = {
     }
   },
 
+  // ── Reminders ──────────────────────────────────────────────────────────────
+
   async getReminderConfigs(userId: string): Promise<ReminderConfig[]> {
     const colRef = userCol(userId, "reminders");
     const q = query(colRef);
@@ -440,68 +442,13 @@ export const firestoreService = {
     const batch = writeBatch(db);
     configs.forEach(config => {
       const docRef = doc(db, "users", userId, "reminders", config.id);
-      console.log("Firestore: saveAllReminders - Batching config for ID:", config.id, "Data:", config);
       batch.set(docRef, config, { merge: true });
     });
-    try {
-      await batch.commit();
-      console.log("Firestore: saveAllReminders - Batch commit successful.");
-    } catch (e: any) {
-      console.error("Firestore: saveAllReminders - Error during batch commit:", e.code, e.message, e);
-      throw e; // Re-throw the error to be caught by the calling function
-    }
-  },
-
-  async updateReminderConfig(userId: string, config: Partial<ReminderConfig> & { id: string }) {
-    console.log("Firestore: updateReminderConfig - User ID:", userId, "Config:", config);
-    const docRef = doc(db, "users", userId, "reminders", config.id);
-    try {
-      await setDoc(docRef, config, { merge: true });
-      console.log("Firestore: updateReminderConfig - Success for ID:", config.id);
-    } catch (e: any) {
-      console.error("Firestore: updateReminderConfig - Error for ID:", config.id, "Error:", e.code, e.message, e);
-      throw e; // Re-throw the error to be caught by the calling function
-    }
+    await batch.commit();
   },
 
   async updateReminderConfig(userId: string, config: Partial<ReminderConfig> & { id: string }) {
     const docRef = doc(db, "users", userId, "reminders", config.id);
-    try {
-      await setDoc(docRef, config, { merge: true });
-      console.log("Firestore: updateReminderConfig - Success for ID:", config.id);
-    } catch (e: any) {
-      console.error("Firestore: updateReminderConfig - Error for ID:", config.id, "Error:", e.code, e.message, e);
-      throw e; // Re-throw the error to be caught by the calling function
-    }
-  },
-
-  async updateReminderConfig(userId: string, config: Partial<ReminderConfig> & { id: string }) {
-
-    const docRef = doc(db, "users", userId, "reminders", config.id);
-    try {
-      await setDoc(docRef, config, { merge: true });
-
-    } catch (e: any) {
-
-      throw e; // Re-throw the error to be caught by the calling function
-    }
-  },
-
-  async saveAllReminders(userId: string, configs: ReminderConfig[]) {
-    // Firebase Web SDK doesn't have a direct writeBatch for the entire array easily in this context without looping
-    // but we can use a loop with multiple setDoc or a proper batch
-    const { writeBatch } = await import("firebase/firestore");
-    const batch = writeBatch(db);
-    configs.forEach(config => {
-      const docRef = doc(db, "users", userId, "reminders", config.id);
-      batch.set(docRef, config);
-    });
-    try {
-      await batch.commit();
-      console.log("Firestore: saveAllReminders - Batch commit successful.");
-    } catch (e: any) {
-      console.error("Firestore: saveAllReminders - Error during batch commit:", e.code, e.message, e);
-      throw e; // Re-throw the error to be caught by the calling function
-    }
+    await setDoc(docRef, config, { merge: true });
   }
 };

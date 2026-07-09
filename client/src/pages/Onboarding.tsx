@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useFirebaseStorage } from "@/hooks/useFirebaseStorage";
 import { geminiService } from "@/lib/gemini";
 import {
-  Loader2, ChevronRight, Camera, ImageIcon, UserCircle2, ScanLine, CheckCircle2, X
+  Loader2, ChevronRight, Camera, ImageIcon, UserCircle2, CheckCircle2, X
 } from "lucide-react";
 import { toast } from "sonner";
 import { auth } from "@/lib/firebase";
@@ -152,13 +152,13 @@ function PhotoSection({ title, description, note, photo, onPhoto, onClear, icon,
 export default function Onboarding() {
   const [, navigate] = useLocation();
   const { isAuthenticated, loading, updateProfile, profile } = useAuth();
+  const { uploadFromDataUrl } = useFirebaseStorage();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [step, setStep] = useState(1);
 
   const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
   const [evalPhoto, setEvalPhoto] = useState<string | null>(null);
 
-  // Tarefa 4: Campos sem valores padrão, apenas placeholders
   const [form, setForm] = useState({
     name: "",
     age: "",
@@ -186,7 +186,6 @@ export default function Onboarding() {
   }, [isAuthenticated, loading, navigate, profile]);
 
   const handleSubmit = async () => {
-    // Validação básica dos campos obrigatórios
     if (!form.name || !form.age || !form.heightCm || !form.weightKg) {
       toast.error("Por favor, preencha todos os dados básicos.");
       setStep(1);
@@ -197,15 +196,24 @@ export default function Onboarding() {
     const toastId = toast.loading("Salvando suas informações...");
 
     try {
-      // Salvar foto de avaliação no Firebase Storage se existir
       let evalPhotoUrl: string | undefined = undefined;
+      let profilePhotoUrl: string | undefined = undefined;
+
       if (evalPhoto) {
         try {
-          const storage = useFirebaseStorage();
           const uploadPath = `evaluations/${auth.currentUser?.uid}_${Date.now()}.jpg`;
-          evalPhotoUrl = await storage.uploadFromDataUrl(evalPhoto, uploadPath);
+          evalPhotoUrl = await uploadFromDataUrl(evalPhoto, uploadPath);
         } catch (uploadError) {
           console.warn("Erro ao fazer upload da foto de avaliação:", uploadError);
+        }
+      }
+
+      if (profilePhoto) {
+        try {
+          const uploadPath = `profiles/${auth.currentUser?.uid}_${Date.now()}.jpg`;
+          profilePhotoUrl = await uploadFromDataUrl(profilePhoto, uploadPath);
+        } catch (uploadError) {
+          console.warn("Erro ao fazer upload da foto de perfil:", uploadError);
         }
       }
 
@@ -224,7 +232,7 @@ export default function Onboarding() {
         physicalRestrictions: form.restrictions,
         preferredExercises: form.likes,
         avoidedExercises: form.dislikes,
-        photoUrl: profilePhoto || undefined,
+        photoUrl: profilePhotoUrl || undefined,
         evalPhotoUrl: evalPhotoUrl || undefined,
         onboardingCompleted: true,
       } as any);
@@ -344,21 +352,21 @@ export default function Onboarding() {
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Dias/semana</label>
                   <select className="w-full bg-gray-50 border-none rounded-2xl p-4 appearance-none" value={form.daysPerWeek} onChange={e => setForm({...form, daysPerWeek: e.target.value})}>
-                    {[2,3,4,5,6].map(d => <option key={d} value={d}>{d} dias</option>)}
+                    {[1,2,3,4,5,6,7].map(d => <option key={d} value={d}>{d} dias</option>)}
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Minutos/treino</label>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Tempo/treino</label>
                   <select className="w-full bg-gray-50 border-none rounded-2xl p-4 appearance-none" value={form.minutesPerWorkout} onChange={e => setForm({...form, minutesPerWorkout: e.target.value})}>
-                    {[30,45,60,75,90].map(m => <option key={m} value={m}>{m} min</option>)}
+                    {[30,45,60,90,120].map(m => <option key={m} value={m}>{m} min</option>)}
                   </select>
                 </div>
               </div>
             </div>
 
             <div className="flex gap-3">
-              <button className="flex-1 bg-gray-100 text-gray-700 py-5 rounded-3xl font-bold" onClick={() => setStep(1)}>VOLTAR</button>
-              <button className="flex-2 bg-black text-white py-5 px-10 rounded-3xl font-bold shadow-xl flex items-center justify-center gap-2" onClick={() => { setStep(3); window.scrollTo(0, 0); }}>
+              <button className="flex-1 bg-gray-200 text-gray-700 py-5 rounded-3xl font-bold" onClick={() => setStep(1)}>VOLTAR</button>
+              <button className="flex-[2] bg-black text-white py-5 rounded-3xl font-bold shadow-xl flex items-center justify-center gap-2" onClick={() => { setStep(3); window.scrollTo(0, 0); }}>
                 PRÓXIMO PASSO <ChevronRight size={18} />
               </button>
             </div>
@@ -369,43 +377,45 @@ export default function Onboarding() {
           <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
             <div className="space-y-2">
               <h1 className="text-3xl font-black text-gray-900 tracking-tight">AVALIAÇÃO</h1>
-              <p className="text-gray-500 text-sm">Quase lá! Vamos para a análise visual.</p>
+              <p className="text-gray-500 text-sm">Último passo para gerar seu treino.</p>
             </div>
 
             <PhotoSection
-              title="Foto para Avaliação Física"
-              description="Envie uma foto de corpo inteiro, de frente, em um ambiente bem iluminado. Essa imagem será utilizada exclusivamente pela IA para analisar sua composição corporal."
+              title="Foto para Avaliação"
+              description="Tire uma foto do seu corpo (frente ou lado) para que a IA analise sua composição corporal."
+              note="A IA usará esta foto apenas para estimar BF e massa muscular."
               photo={evalPhoto}
               onPhoto={setEvalPhoto}
               onClear={() => setEvalPhoto(null)}
-              icon={<ScanLine size={20} />}
+              icon={<Camera size={20} />}
               inputIdPrefix="eval-photo"
             />
 
-            <div className="bg-white rounded-3xl p-6 shadow-sm space-y-6">
+            <div className="bg-white rounded-3xl p-6 shadow-sm space-y-4">
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Dores ou limitações</label>
-                <textarea className="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm" placeholder="Ex: Dor no joelho direito, hérnia de disco..." rows={3} value={form.restrictions} onChange={e => setForm({...form, restrictions: e.target.value})} />
+                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Local de treino</label>
+                <select className="w-full bg-gray-50 border-none rounded-2xl p-4 appearance-none" value={form.gymType} onChange={e => setForm({...form, gymType: e.target.value})}>
+                  <option>Academia completa</option>
+                  <option>Equipamentos básicos</option>
+                  <option>Apenas halteres</option>
+                  <option>Peso do corpo (Calistenia)</option>
+                </select>
               </div>
+
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Preferências de exercícios</label>
-                <textarea className="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm" placeholder="Ex: Gosto de agachamento, prefiro treinar com halteres..." rows={3} value={form.likes} onChange={e => setForm({...form, likes: e.target.value})} />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Exercícios a evitar</label>
-                <textarea className="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm" placeholder="Ex: Não gosto de burpee, evito corrida..." rows={3} value={form.dislikes} onChange={e => setForm({...form, dislikes: e.target.value})} />
+                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Restrições ou Lesões</label>
+                <textarea className="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm min-h-[80px]" placeholder="Ex: Dor no joelho esquerdo, hérnia de disco..." value={form.restrictions} onChange={e => setForm({...form, restrictions: e.target.value})} />
               </div>
             </div>
 
             <div className="flex gap-3">
-              <button className="flex-1 bg-gray-100 text-gray-700 py-5 rounded-3xl font-bold disabled:opacity-50" disabled={isSubmitting} onClick={() => setStep(2)}>VOLTAR</button>
-              <button
-                className="flex-2 bg-black text-white py-5 px-10 rounded-3xl font-bold shadow-xl flex items-center justify-center gap-2 disabled:opacity-50"
-                disabled={isSubmitting}
+              <button className="flex-1 bg-gray-200 text-gray-700 py-5 rounded-3xl font-bold" onClick={() => setStep(2)}>VOLTAR</button>
+              <button 
+                className="flex-[2] bg-orange-500 text-white py-5 rounded-3xl font-bold shadow-xl shadow-orange-200 flex items-center justify-center gap-2 disabled:opacity-50" 
                 onClick={handleSubmit}
+                disabled={isSubmitting}
               >
-                {isSubmitting ? <Loader2 size={20} className="animate-spin" /> : <CheckCircle2 size={18} />}
-                {isSubmitting ? "SALVANDO..." : "FINALIZAR"}
+                {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : "FINALIZAR E GERAR TREINO"}
               </button>
             </div>
           </div>
