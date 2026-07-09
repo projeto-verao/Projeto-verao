@@ -187,9 +187,7 @@ export default function Reminders() {
       : ['water', 'food_log', 'protein', 'calories', 'training_remind', 'weight', 'evolution_photo'];
 
     updated.forEach(r => {
-      if (idsToEnable.includes(r.id)) {
-        r.enabled = true;
-      }
+      r.enabled = idsToEnable.includes(r.id);
     });
 
     try {
