@@ -61,7 +61,7 @@ export default function Reminders() {
   const [loading, setLoading] = useState(true);
   const [selectedReminder, setSelectedReminder] = useState<ReminderConfig | null>(null);
   const [isConfiguring, setIsConfiguring] = useState(false);
-  const [selectedProfile, setSelectedProfile] = useState<'all' | 'basic' | 'fitness'>('all');
+  const [selectedProfile, setSelectedProfile] = useState<'all' | 'basic' | 'fitness' | 'none'>('none');
 
   const basicRemindersIds = ['water', 'food_log', 'training_remind'];
   const fitnessRemindersIds = ['water', 'food_log', 'protein', 'calories', 'training_remind', 'weight', 'evolution_photo'];
@@ -183,6 +183,7 @@ export default function Reminders() {
       });
       
       setReminders(merged);
+      setSelectedProfile("all"); // Set default profile to 'all' after loading
       try {
         await checkSmartStatus();
       } catch (smartStatusError) {
@@ -214,20 +215,24 @@ export default function Reminders() {
   };
 
   const toggleReminder = async (id: string) => {
+    console.log("toggleReminder called for ID:", id); // Added for debugging
+
     console.log("toggleReminder called for ID:", id);
     const reminder = reminders.find(r => r.id === id);
     if (!reminder) return;
 
+    const originalReminders = [...reminders]; // Save original state for rollback
     const newStatus = !reminder.enabled;
     const updatedReminders = reminders.map(r => 
       r.id === id ? { ...r, enabled: newStatus } : r
     );
-    setReminders(updatedReminders);
+    setReminders(updatedReminders); // Optimistic UI update
 
     try {
       if (!user) {
         toast.error("Usuário não autenticado.");
-        setReminders(reminders); // Rollback
+        setReminders(originalReminders); // Rollback to original state
+        return;
         return;
       }
       // Pass the full updated reminder object to ensure all fields are saved correctly
@@ -243,7 +248,7 @@ export default function Reminders() {
       }
       toast.error(`Erro ao salvar alteração para ${reminder.title}: ${errorMessage}`);
       // Rollback
-      setReminders(reminders);
+      setReminders(originalReminders);
     }
   };
 
@@ -388,7 +393,7 @@ export default function Reminders() {
                   className="app-input"
                 />
               </div>
-            )}
+    
 
             {/* Intervalo (condicional) */}
             {selectedReminder.repetitionType === 'every_x_hours' && (
@@ -412,7 +417,7 @@ export default function Reminders() {
                   ))}
                 </div>
               </div>
-            )}
+    
 
             {/* Dias da Semana (condicional) */}
             {selectedReminder.repetitionType === 'specific_days' && (
@@ -443,7 +448,7 @@ export default function Reminders() {
                   })}
                 </div>
               </div>
-            )}
+    
 
             {/* Som e Vibração */}
             <div className="grid grid-cols-2 gap-3">
@@ -511,24 +516,24 @@ export default function Reminders() {
         {/* Quick Config */}
         <div className="flex flex-wrap gap-2 mb-6">
           <button 
-            onClick={() => setSelectedProfile("basic")}
-            className={`app-card flex-1 p-4 flex flex-col items-center justify-center space-y-2 text-center ${selectedProfile === "basic" ? "border-2 border-black" : ""}`}
+            onClick={() => {setSelectedProfile("basic"); applyPreset("basic");}}
+            className={`app-card flex-1 p-4 flex flex-col items-center justify-center space-y-2 text-center ${selectedProfile === "basic" ? "border-2 border-black bg-gray-50" : ""}`}
           >
             <Zap size={20} />
             <span className="font-semibold">Básico</span>
             <p className="text-xs text-gray-500">Água, Alimentação e Treino</p>
           </button>
           <button 
-            onClick={() => setSelectedProfile("fitness")}
-            className={`app-card flex-1 p-4 flex flex-col items-center justify-center space-y-2 text-center ${selectedProfile === "fitness" ? "border-2 border-black" : ""}`}
+            onClick={() => {setSelectedProfile("fitness"); applyPreset("fitness");}}
+            className={`app-card flex-1 p-4 flex flex-col items-center justify-center space-y-2 text-center ${selectedProfile === "fitness" ? "border-2 border-black bg-gray-50" : ""}`}
           >
             <Sparkles size={20} />
             <span className="font-semibold">Fitness</span>
             <p className="text-xs text-gray-500">Tudo para performance</p>
           </button>
           <button 
-            onClick={() => setSelectedProfile("all")}
-            className={`app-card flex-1 p-4 flex flex-col items-center justify-center space-y-2 text-center ${selectedProfile === "all" ? "border-2 border-black" : ""}`}
+            onClick={() => {setSelectedProfile("all");}}
+            className={`app-card flex-1 p-4 flex flex-col items-center justify-center space-y-2 text-center ${selectedProfile === "all" ? "border-2 border-black bg-gray-50" : ""}`}
           >
             <Bell size={20} />
             <span className="font-semibold">Todos</span>
@@ -540,8 +545,9 @@ export default function Reminders() {
         {selectedProfile === "fitness" && <h2 className="text-lg font-bold mb-4">Lembretes do Perfil Fitness</h2>}
         {selectedProfile === "all" && <h2 className="text-lg font-bold mb-4">Todos os Lembretes</h2>}
 
-        <div className="space-y-4">
-          {filteredReminders.map(reminder => {
+        
+          <div className="space-y-4">
+            {filteredReminders.map(reminder => {
             const Icon = REMINDER_TYPES.find(t => t.id === reminder.id)?.icon || Bell;
             const isSmart = smartStatus[reminder.id];
 
@@ -559,7 +565,7 @@ export default function Reminders() {
                 <div className="flex items-center gap-2">
                   {isSmart && reminder.enabled && (
                     <span className="text-xs text-green-600 font-medium">META ATINGIDA</span>
-                  )}
+          
                   <button
                     onClick={() => toggleReminder(reminder.id)}
                     className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${reminder.enabled ? "bg-black" : "bg-gray-200"}`}
@@ -571,6 +577,18 @@ export default function Reminders() {
                   <button
                     onClick={() => {
                       setSelectedReminder(reminder);
+                      setIsConfiguring(true);
+                    }}
+                    className="text-gray-400 hover:text-black transition-colors"
+                  >
+                    <ChevronRight size={20} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+          </div>
+
                       setIsConfiguring(true);
                     }}
                     className="text-gray-400 hover:text-black transition-colors"
