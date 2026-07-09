@@ -714,16 +714,36 @@ export default function IATrainer() {
                             v{version.version} • {new Date(version.createdAt.toMillis()).toLocaleDateString()}
                           </span>
                         </div>
-                        {version.isActive ? (
-                          <span className="px-2 py-0.5 bg-primary text-white text-[10px] font-bold rounded-full">ATIVO</span>
-                        ) : (
-                          <button
-                            onClick={() => handleRestore(version.id)}
-                            className="text-xs text-primary font-medium hover:underline"
-                          >
-                            Restaurar
-                          </button>
-                        )}
+                        <div className="flex items-center gap-3">
+                          {version.isActive ? (
+                            <span className="px-2 py-0.5 bg-primary text-white text-[10px] font-bold rounded-full">ATIVO</span>
+                          ) : (
+                            <button
+                              onClick={() => handleRestore(version.id)}
+                              className="text-xs text-primary font-medium hover:underline"
+                            >
+                              Restaurar
+                            </button>
+                          )}
+                          {!version.isActive && (
+                            <button
+                              onClick={async () => {
+                                if (!user || !window.confirm("Deseja excluir permanentemente esta versão de treino?")) return;
+                                try {
+                                  await firestoreService.deleteWorkout(user.uid, version.id);
+                                  toast.success("Versão excluída!");
+                                  loadWorkouts();
+                                } catch (err) {
+                                  toast.error("Erro ao excluir.");
+                                }
+                              }}
+                              className="p-1.5 text-gray-300 hover:text-red-500 transition-colors"
+                              title="Excluir versão"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </div>
                       </div>
                       <p className="text-xs text-gray-600 italic flex items-start gap-1">
                         <Info size={12} className="mt-0.5 shrink-0" />
