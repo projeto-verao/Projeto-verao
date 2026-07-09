@@ -488,13 +488,19 @@ export default function Dashboard() {
                     
                     {/* Botão de Iniciar Treino (Cronômetro) */}
                     {!isTraining && (
-                      <button
-                        onClick={() => handleStartWorkout(day.dayNumber)}
-                        className="w-full bg-black text-white py-4 rounded-3xl font-bold shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 mb-4"
-                      >
-                        <Play size={18} fill="white" />
-                        INICIAR TREINO AGORA
-                      </button>
+                      <div className="space-y-4 mb-6">
+                        <button
+                          onClick={() => handleStartWorkout(day.dayNumber)}
+                          className="w-full bg-black text-white py-4 rounded-3xl font-bold shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
+                        >
+                          <Play size={18} fill="white" />
+                          INICIAR TREINO AGORA
+                        </button>
+                        <div className="flex items-center justify-center gap-2 text-gray-400 py-2">
+                          <Info size={14} />
+                          <p className="text-xs font-bold uppercase tracking-widest">Inicie o treino para registrar sua execução.</p>
+                        </div>
+                      </div>
                     )}
 
                     {/* Cronômetro Ativo na tela do treino */}
@@ -526,7 +532,12 @@ export default function Dashboard() {
                           </div>
                           <button
                             onClick={() => handleMarkAllSetsOfExercise(day.dayNumber, idx, ex.sets)}
-                            className="text-[10px] bg-black text-white px-3 py-1.5 rounded-full font-bold uppercase tracking-tighter shrink-0 hover:bg-gray-800 active:scale-95 transition-all cursor-pointer"
+                            disabled={!isTraining}
+                            className={`text-[10px] px-3 py-1.5 rounded-full font-bold uppercase tracking-tighter shrink-0 transition-all ${
+                              isTraining 
+                                ? "bg-black text-white hover:bg-gray-800 active:scale-95 cursor-pointer" 
+                                : "bg-gray-100 text-gray-300 cursor-not-allowed"
+                            }`}
                           >
                             {ex.sets} séries
                           </button>
@@ -538,8 +549,13 @@ export default function Dashboard() {
                               <button
                                 key={sIdx}
                                 onClick={() => toggleSet(day.dayNumber, idx, sIdx, ex.rest)}
+                                disabled={!isTraining}
                                 className={`w-11 h-11 rounded-2xl border-2 flex items-center justify-center text-xs font-black transition-all ${
-                                  isDone ? "bg-green-500 border-green-500 text-white shadow-lg shadow-green-200" : "bg-white border-gray-100 text-gray-300 hover:border-black hover:text-black"
+                                  isDone 
+                                    ? "bg-green-500 border-green-500 text-white shadow-lg shadow-green-200" 
+                                    : isTraining 
+                                      ? "bg-white border-gray-100 text-gray-300 hover:border-black hover:text-black cursor-pointer"
+                                      : "bg-gray-50 border-gray-50 text-gray-200 cursor-not-allowed"
                                 }`}
                               >
                                 {isDone ? "✓" : sIdx + 1}
