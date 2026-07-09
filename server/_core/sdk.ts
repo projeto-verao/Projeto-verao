@@ -302,21 +302,50 @@ class SDKServer {
     const signedInAt = new Date();
     let user = await db.getUserByOpenId(sessionUserId);
 
-    // If user not in DB, sync from OAuth server automatically
+    // If user not in DB, handle based on login method
     if (!user) {
-      try {
-        const userInfo = await this.getUserInfoWithJwt(sessionToken ?? "");
-        await db.upsertUser({
-          openId: userInfo.openId,
-          name: userInfo.name || null,
-          email: userInfo.email ?? null,
-          loginMethod: userInfo.loginMethod ?? userInfo.platform ?? null,
-          lastSignedIn: signedInAt,
-        });
-        user = await db.getUserByOpenId(userInfo.openId);
-      } catch (error) {
-        console.error("[Auth] Failed to sync user from OAuth:", error);
-        throw ForbiddenError("Failed to sync user info");
+      // Firebase users: create locally without calling Manus OAuth
+      if (sessionUserId.startsWith("firebase:")) {
+        try {
+          await db.upsertUser({
+            openId: sessionUserId,
+            name: session.name || null,
+            email: null,
+            loginMethod: "firebase",
+            lastSignedIn: signedInAt,
+          });
+          user = await db.getUserByOpenId(sessionUserId);
+        } catch (error) {
+          console.error("[Auth] Failed to create Firebase user in DB:", error);
+          // If DB is unavailable, build a virtual user from the session
+          return {
+            id: -1,
+            openId: sessionUserId,
+            name: session.name || null,
+            email: null,
+            loginMethod: "firebase",
+            role: "user" as const,
+            createdAt: signedInAt,
+            updatedAt: signedInAt,
+            lastSignedIn: signedInAt,
+          };
+        }
+      } else {
+        // Non-Firebase users: sync from OAuth server
+        try {
+          const userInfo = await this.getUserInfoWithJwt(sessionToken ?? "");
+          await db.upsertUser({
+            openId: userInfo.openId,
+            name: userInfo.name || null,
+            email: userInfo.email ?? null,
+            loginMethod: userInfo.loginMethod ?? userInfo.platform ?? null,
+            lastSignedIn: signedInAt,
+          });
+          user = await db.getUserByOpenId(userInfo.openId);
+        } catch (error) {
+          console.error("[Auth] Failed to sync user from OAuth:", error);
+          throw ForbiddenError("Failed to sync user info");
+        }
       }
     }
 
@@ -324,10 +353,15 @@ class SDKServer {
       throw ForbiddenError("User not found");
     }
 
-    await db.upsertUser({
-      openId: user.openId,
-      lastSignedIn: signedInAt,
-    });
+    // Update last signed in (best-effort, don't fail if DB is down)
+    try {
+      await db.upsertUser({
+        openId: user.openId,
+        lastSignedIn: signedInAt,
+      });
+    } catch (e) {
+      console.warn("[Auth] Could not update lastSignedIn:", e);
+    }
 
     return user;
   }

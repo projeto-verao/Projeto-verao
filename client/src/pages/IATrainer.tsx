@@ -1,8 +1,9 @@
-import { useState, useRef, useEffect } from "react";
-import { trpc } from "@/lib/trpc";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import AppLayout from "@/components/AppLayout";
-import { ArrowLeft, Send, Loader2, Camera, Upload, User, ChevronDown, RotateCcw, Sparkles } from "lucide-react";
+import { geminiService } from "@/lib/gemini";
+import { firestoreService, ChatMessageEntry, BodyProgressEntry, StoredWorkout } from "@/hooks/useFirebaseFirestore";
+import { ArrowLeft, Send, Loader2, Camera, Upload, ChevronDown, RotateCcw, Sparkles } from "lucide-react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 import { Streamdown } from "streamdown";
@@ -14,7 +15,7 @@ const LEVELS = ["Iniciante", "Intermediário", "Avançado"] as const;
 
 export default function IATrainer() {
   const [, navigate] = useLocation();
-  const { isAuthenticated, loading } = useAuth();
+  const { user, profile, isAuthenticated, loading, updateProfile } = useAuth();
 
   // Redireciona para login se não autenticado
   useEffect(() => {
@@ -23,26 +24,74 @@ export default function IATrainer() {
       navigate("/login");
     }
   }, [isAuthenticated, loading, navigate]);
+
   const [activeTab, setActiveTab] = useState<Tab>("chat");
   const [message, setMessage] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
-  // Chat
-  const { data: chatHistory, refetch: refetchChat } = trpc.chat.history.useQuery();
-  const sendMessage = trpc.chat.send.useMutation({
-    onSuccess: () => { refetchChat(); setMessage(""); },
-    onError: () => toast.error("Erro ao enviar mensagem."),
-  });
+  // ── Chat state ──────────────────────────────────────────────────────────────
+  const [chatHistory, setChatHistory] = useState<ChatMessageEntry[]>([]);
+  const [sending, setSending] = useState(false);
 
-  // Profile
-  const { data: profile, refetch: refetchProfile } = trpc.profile.get.useQuery();
-  const saveProfile = trpc.profile.save.useMutation({
-    onSuccess: () => { toast.success("Perfil atualizado!"); refetchProfile(); },
-  });
-  const uploadPhoto = trpc.profile.uploadPhoto.useMutation();
+  const loadChat = useCallback(async () => {
+    if (!user) return;
+    try {
+      const history = await firestoreService.getChatHistory(user.uid);
+      setChatHistory(history);
+    } catch (err) {
+      console.error("Erro ao carregar chat:", err);
+    }
+  }, [user]);
 
+  useEffect(() => { if (user) loadChat(); }, [user, loadChat]);
+
+  const handleSend = async () => {
+    if (!message.trim() || sending || !user) return;
+    const userMsg = message.trim();
+    setMessage("");
+    setSending(true);
+
+    // Otimista: mostra a mensagem do usuário imediatamente
+    const tempUserMsg: ChatMessageEntry = {
+      id: `temp-${Date.now()}`,
+      role: "user",
+      content: userMsg,
+      createdAt: { toMillis: () => Date.now() } as any,
+    };
+    setChatHistory(prev => [...prev, tempUserMsg]);
+
+    try {
+      await firestoreService.addChatMessage(user.uid, "user", userMsg);
+
+      // Contexto do treino ativo para respostas mais precisas
+      let workoutContext: string | undefined;
+      try {
+        const workout = await firestoreService.getActiveWorkout(user.uid);
+        if (workout) {
+          workoutContext = `${workout.title}: ${workout.days.map(d => `Dia ${d.dayNumber} — ${d.title} (${d.exercises.map(e => e.name).join(", ")})`).join("; ")}`;
+        }
+      } catch { /* sem treino */ }
+
+      const historyForAI = [...chatHistory, tempUserMsg].map(m => ({
+        role: m.role,
+        content: m.content,
+      }));
+
+      const reply = await geminiService.chat(historyForAI, profile as any, workoutContext);
+      await firestoreService.addChatMessage(user.uid, "assistant", reply);
+      await loadChat();
+    } catch (err) {
+      console.error("Erro no chat:", err);
+      toast.error(err instanceof Error ? err.message : "Erro ao enviar mensagem.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // ── Profile state ───────────────────────────────────────────────────────────
+  const [savingProfile, setSavingProfile] = useState(false);
   const [profileForm, setProfileForm] = useState({
     name: "", age: "", sex: "Masculino", heightCm: "", weightKg: "",
     goal: "Hipertrofia", experienceLevel: "Iniciante" as typeof LEVELS[number],
@@ -70,40 +119,51 @@ export default function IATrainer() {
     }
   }, [profile]);
 
-  // Evolution
-  const { data: bodyHistory, refetch: refetchBody } = trpc.bodyProgress.history.useQuery();
-  const addProgress = trpc.bodyProgress.add.useMutation({
-    onSuccess: () => { toast.success("Registro salvo!"); refetchBody(); setEvoForm({ weightKg: "", bodyFatPercent: "", chestCm: "", waistCm: "", armCm: "", thighCm: "", notes: "" }); },
-  });
-  const analyzeEvolution = trpc.profile.analyzeBody.useMutation({
-    onSuccess: (data) => {
-      setAnalysisResult(data);
-      toast.success("Análise corporal concluída!");
-    },
-    onError: () => toast.error("Erro ao analisar evolução."),
-  });
-  const [analysisResult, setAnalysisResult] = useState<any>(null);
+  const handleSaveProfile = async () => {
+    setSavingProfile(true);
+    try {
+      await updateProfile({
+        name: profileForm.name,
+        age: parseInt(profileForm.age) || undefined,
+        sex: profileForm.sex,
+        heightCm: parseFloat(profileForm.heightCm) || undefined,
+        weightKg: parseFloat(profileForm.weightKg) || undefined,
+        goal: profileForm.goal,
+        experienceLevel: profileForm.experienceLevel,
+        daysPerWeek: parseInt(profileForm.daysPerWeek) || undefined,
+        minutesPerSession: parseInt(profileForm.minutesPerSession) || undefined,
+        gymType: profileForm.gymType,
+        physicalRestrictions: profileForm.physicalRestrictions || undefined,
+        preferredExercises: profileForm.preferredExercises || undefined,
+        avoidedExercises: profileForm.avoidedExercises || undefined,
+      } as any);
+      toast.success("Perfil atualizado!");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao salvar perfil.");
+    } finally {
+      setSavingProfile(false);
+    }
+  };
 
+  // ── Evolution state ─────────────────────────────────────────────────────────
+  const [bodyHistory, setBodyHistory] = useState<BodyProgressEntry[]>([]);
+  const [savingProgress, setSavingProgress] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState<any>(null);
   const [evoForm, setEvoForm] = useState({ weightKg: "", bodyFatPercent: "", chestCm: "", waistCm: "", armCm: "", thighCm: "", notes: "" });
-  const [evoPhotoBase64, setEvoPhotoBase64] = useState<string | null>(null);
   const [evoPhotoPreview, setEvoPhotoPreview] = useState<string | null>(null);
 
-  // History
-  const { data: workoutVersions, refetch: refetchVersions } = trpc.workoutHistory.list.useQuery();
-  const restoreVersion = trpc.workoutHistory.restore.useMutation({
-    onSuccess: () => { toast.success("Treino restaurado!"); refetchVersions(); },
-  });
-
-  useEffect(() => {
-    if (activeTab === "chat") {
-      setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+  const loadBodyHistory = useCallback(async () => {
+    if (!user) return;
+    try {
+      const history = await firestoreService.getBodyProgressHistory(user.uid);
+      setBodyHistory(history);
+    } catch (err) {
+      console.error("Erro ao carregar histórico corporal:", err);
     }
-  }, [chatHistory, activeTab]);
+  }, [user]);
 
-  const handleSend = () => {
-    if (!message.trim() || sendMessage.isPending) return;
-    sendMessage.mutate({ message: message.trim() });
-  };
+  useEffect(() => { if (user) loadBodyHistory(); }, [user, loadBodyHistory]);
 
   const handleEvoPhoto = (file: File) => {
     const reader = new FileReader();
@@ -111,36 +171,96 @@ export default function IATrainer() {
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 1024;
-        const MAX_HEIGHT = 1024;
-        let width = img.width;
-        let height = img.height;
-
-        if (width > height) {
-          if (width > MAX_WIDTH) {
-            height *= MAX_WIDTH / width;
-            width = MAX_WIDTH;
-          }
-        } else {
-          if (height > MAX_HEIGHT) {
-            width *= MAX_HEIGHT / height;
-            height = MAX_HEIGHT;
-          }
-        }
-
+        const MAX = 1024;
+        let { width, height } = img;
+        if (width > height && width > MAX) { height *= MAX / width; width = MAX; }
+        else if (height > MAX) { width *= MAX / height; height = MAX; }
         canvas.width = width;
         canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx?.drawImage(img, 0, 0, width, height);
-        
-        const resizedBase64 = canvas.toDataURL('image/jpeg', 0.8);
-        setEvoPhotoPreview(resizedBase64);
-        setEvoPhotoBase64(resizedBase64.split(",")[1]);
+        canvas.getContext('2d')?.drawImage(img, 0, 0, width, height);
+        setEvoPhotoPreview(canvas.toDataURL('image/jpeg', 0.8));
       };
       img.src = e.target?.result as string;
     };
     reader.readAsDataURL(file);
   };
+
+  const handleSaveProgress = async () => {
+    if (!user) return;
+    setSavingProgress(true);
+    try {
+      await firestoreService.addBodyProgress(user.uid, {
+        weightKg: evoForm.weightKg ? parseFloat(evoForm.weightKg) : undefined,
+        bodyFatPercent: evoForm.bodyFatPercent ? parseFloat(evoForm.bodyFatPercent) : undefined,
+        chestCm: evoForm.chestCm ? parseFloat(evoForm.chestCm) : undefined,
+        waistCm: evoForm.waistCm ? parseFloat(evoForm.waistCm) : undefined,
+        armCm: evoForm.armCm ? parseFloat(evoForm.armCm) : undefined,
+        thighCm: evoForm.thighCm ? parseFloat(evoForm.thighCm) : undefined,
+        notes: evoForm.notes || undefined,
+      });
+      toast.success("Registro salvo!");
+      setEvoForm({ weightKg: "", bodyFatPercent: "", chestCm: "", waistCm: "", armCm: "", thighCm: "", notes: "" });
+      await loadBodyHistory();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao salvar registro.");
+    } finally {
+      setSavingProgress(false);
+    }
+  };
+
+  const handleAnalyze = async () => {
+    const photo = evoPhotoPreview || profile?.photoUrl;
+    if (!photo) {
+      toast.info("Envie uma foto primeiro para a IA analisar!");
+      return;
+    }
+    setAnalyzing(true);
+    try {
+      const result = await geminiService.analyzeBody(photo, profile as any);
+      setAnalysisResult(result);
+      toast.success("Análise corporal concluída!");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao analisar evolução.");
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  // ── Workout history state ───────────────────────────────────────────────────
+  const [workoutVersions, setWorkoutVersions] = useState<StoredWorkout[]>([]);
+  const [restoring, setRestoring] = useState(false);
+
+  const loadVersions = useCallback(async () => {
+    if (!user) return;
+    try {
+      const versions = await firestoreService.listWorkouts(user.uid);
+      setWorkoutVersions(versions);
+    } catch (err) {
+      console.error("Erro ao carregar versões:", err);
+    }
+  }, [user]);
+
+  useEffect(() => { if (user) loadVersions(); }, [user, loadVersions]);
+
+  const handleRestore = async (workoutId: string) => {
+    if (!user) return;
+    setRestoring(true);
+    try {
+      await firestoreService.restoreWorkout(user.uid, workoutId);
+      toast.success("Treino restaurado!");
+      await loadVersions();
+    } catch (err) {
+      toast.error("Erro ao restaurar treino.");
+    } finally {
+      setRestoring(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "chat") {
+      setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+    }
+  }, [chatHistory, activeTab]);
 
   const setP = (f: string, v: string) => setProfileForm(prev => ({ ...prev, [f]: v }));
   const setE = (f: string, v: string) => setEvoForm(prev => ({ ...prev, [f]: v }));
@@ -191,7 +311,7 @@ export default function IATrainer() {
                 </div>
               ))
             )}
-            {sendMessage.isPending && (
+            {sending && (
               <div className="flex justify-start">
                 <div className="chat-bubble-ai flex items-center gap-2">
                   <Loader2 size={14} className="animate-spin" />
@@ -213,7 +333,7 @@ export default function IATrainer() {
             />
             <button
               onClick={handleSend}
-              disabled={!message.trim() || sendMessage.isPending}
+              disabled={!message.trim() || sending}
               className="w-11 h-11 bg-black rounded-xl flex items-center justify-center disabled:opacity-40 flex-shrink-0"
             >
               <Send size={18} color="white" />
@@ -295,24 +415,8 @@ export default function IATrainer() {
             <textarea className="app-input resize-none" rows={2} value={profileForm.physicalRestrictions} onChange={e => setP("physicalRestrictions", e.target.value)} />
           </div>
 
-          <button
-            className="btn-primary"
-            onClick={() => saveProfile.mutate({
-              name: profileForm.name,
-              age: parseInt(profileForm.age) || undefined,
-              sex: profileForm.sex as "Masculino" | "Feminino" | "Outro",
-              heightCm: parseFloat(profileForm.heightCm) || undefined,
-              weightKg: parseFloat(profileForm.weightKg) || undefined,
-              goal: profileForm.goal,
-              experienceLevel: profileForm.experienceLevel,
-              daysPerWeek: parseInt(profileForm.daysPerWeek) || undefined,
-              minutesPerSession: parseInt(profileForm.minutesPerSession) || undefined,
-              gymType: profileForm.gymType,
-              physicalRestrictions: profileForm.physicalRestrictions || undefined,
-            })}
-            disabled={saveProfile.isPending}
-          >
-            {saveProfile.isPending ? <Loader2 size={16} className="animate-spin" /> : null}
+          <button className="btn-primary" onClick={handleSaveProfile} disabled={savingProfile}>
+            {savingProfile ? <Loader2 size={16} className="animate-spin" /> : null}
             Salvar perfil
           </button>
         </div>
@@ -380,37 +484,12 @@ export default function IATrainer() {
             </div>
 
             <div className="flex gap-2 mt-4">
-              <button
-                className="btn-primary py-2.5 text-sm"
-                onClick={() => addProgress.mutate({
-                  weightKg: evoForm.weightKg ? parseFloat(evoForm.weightKg) : undefined,
-                  bodyFatPercent: evoForm.bodyFatPercent ? parseFloat(evoForm.bodyFatPercent) : undefined,
-                  chestCm: evoForm.chestCm ? parseFloat(evoForm.chestCm) : undefined,
-                  waistCm: evoForm.waistCm ? parseFloat(evoForm.waistCm) : undefined,
-                  armCm: evoForm.armCm ? parseFloat(evoForm.armCm) : undefined,
-                  thighCm: evoForm.thighCm ? parseFloat(evoForm.thighCm) : undefined,
-                  notes: evoForm.notes || undefined,
-                  photoBase64: evoPhotoBase64 || undefined,
-                })}
-                disabled={addProgress.isPending}
-              >
-                {addProgress.isPending ? <Loader2 size={14} className="animate-spin" /> : null}
+              <button className="btn-primary py-2.5 text-sm" onClick={handleSaveProgress} disabled={savingProgress}>
+                {savingProgress ? <Loader2 size={14} className="animate-spin" /> : null}
                 Salvar registro
               </button>
-              <button
-                className="btn-secondary py-2.5 text-sm"
-                onClick={() => {
-                  if (evoPhotoPreview) {
-                    analyzeEvolution.mutate({ photoUrl: evoPhotoPreview });
-                  } else if (profile?.photoUrl) {
-                    analyzeEvolution.mutate({ photoUrl: profile.photoUrl });
-                  } else {
-                    toast.info("Envie uma foto primeiro para a IA analisar!");
-                  }
-                }}
-                disabled={analyzeEvolution.isPending}
-              >
-                {analyzeEvolution.isPending ? <Loader2 size={14} className="animate-spin" /> : null}
+              <button className="btn-secondary py-2.5 text-sm" onClick={handleAnalyze} disabled={analyzing}>
+                {analyzing ? <Loader2 size={14} className="animate-spin" /> : null}
                 Gerar análise
               </button>
             </div>
@@ -454,7 +533,7 @@ export default function IATrainer() {
                   <div key={record.id} className="app-card py-3">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium text-gray-900">
-                        {new Date(record.recordedAt).toLocaleDateString("pt-BR")}
+                        {new Date(record.createdAt.toMillis()).toLocaleDateString("pt-BR")}
                       </span>
                       <span className="text-sm text-gray-500">
                         {record.weightKg ? `${record.weightKg}kg` : "—"}
@@ -464,6 +543,9 @@ export default function IATrainer() {
                       <p className="text-xs text-gray-400 mt-1">
                         {[record.chestCm && `Peito: ${record.chestCm}cm`, record.waistCm && `Cintura: ${record.waistCm}cm`, record.armCm && `Braço: ${record.armCm}cm`].filter(Boolean).join(" · ")}
                       </p>
+                    )}
+                    {record.notes && (
+                      <p className="text-xs text-gray-400 mt-1 line-clamp-2">{record.notes}</p>
                     )}
                   </div>
                 ))}
@@ -487,20 +569,24 @@ export default function IATrainer() {
                 <div key={version.id} className="app-card">
                   <div className="flex items-start justify-between">
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900 text-sm">Versão {version.versionNumber}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">{new Date(version.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
+                      <p className="font-medium text-gray-900 text-sm">
+                        {version.title} {version.isActive && <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold ml-1">ATIVO</span>}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-0.5">{new Date(version.createdAt.toMillis()).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
                       {version.changeDescription && (
                         <p className="text-xs text-gray-400 mt-1 truncate">{version.changeDescription}</p>
                       )}
                     </div>
-                    <button
-                      onClick={() => restoreVersion.mutate({ versionId: version.id })}
-                      disabled={restoreVersion.isPending}
-                      className="ml-3 flex items-center gap-1 text-xs font-medium text-gray-600 border border-gray-200 rounded-lg px-3 py-1.5 flex-shrink-0"
-                    >
-                      <RotateCcw size={12} />
-                      Restaurar
-                    </button>
+                    {!version.isActive && (
+                      <button
+                        onClick={() => handleRestore(version.id)}
+                        disabled={restoring}
+                        className="ml-3 flex items-center gap-1 text-xs font-medium text-gray-600 border border-gray-200 rounded-lg px-3 py-1.5 flex-shrink-0"
+                      >
+                        <RotateCcw size={12} />
+                        Restaurar
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}

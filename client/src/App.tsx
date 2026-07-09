@@ -6,7 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useEffect } from "react";
 
 import Home from "@/pages/Home";
-import Login from "@/pages/Login";
+import FirebaseLogin from "@/pages/FirebaseLogin";
 import Welcome from "@/pages/Welcome";
 import Onboarding from "@/pages/Onboarding";
 import Processing from "@/pages/Processing";
@@ -48,7 +48,7 @@ export default function App() {
       <ErrorBoundary>
         <Switch>
           <Route path="/" component={Home} />
-          <Route path="/login" component={Login} />
+          <Route path="/login" component={FirebaseLogin} />
           <Route path="/logout" component={Logout} />
           
           {/* Rotas que exigem estar logado mas NÃO ter completado o onboarding ainda */}

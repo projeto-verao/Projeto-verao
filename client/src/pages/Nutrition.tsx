@@ -1,11 +1,13 @@
-import { useState, useRef, useEffect } from "react";
-import { trpc } from "@/lib/trpc";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import AppLayout from "@/components/AppLayout";
-import { ArrowLeft, Droplets, Plus, Camera, Upload, Loader2, Sparkles, BarChart3 } from "lucide-react";
+import { geminiService } from "@/lib/gemini";
+import { firestoreService, MealEntry } from "@/hooks/useFirebaseFirestore";
+import { ArrowLeft, Droplets, Camera, Loader2, Sparkles, BarChart3 } from "lucide-react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 import { Streamdown } from "streamdown";
+import { Timestamp } from "firebase/firestore";
 
 type Tab = "diario" | "ia" | "dashboard";
 
@@ -13,7 +15,7 @@ const MEAL_TYPES = ["Café da manhã", "Lanche da manhã", "Almoço", "Lanche da
 
 export default function Nutrition() {
   const [, navigate] = useLocation();
-  const { isAuthenticated, loading } = useAuth();
+  const { user, profile, isAuthenticated, loading } = useAuth();
 
   // Redireciona para login se não autenticado
   useEffect(() => {
@@ -22,6 +24,7 @@ export default function Nutrition() {
       navigate("/login");
     }
   }, [isAuthenticated, loading, navigate]);
+
   const [activeTab, setActiveTab] = useState<Tab>("diario");
   const [mealDescription, setMealDescription] = useState("");
   const [mealType, setMealType] = useState(MEAL_TYPES[0]);
@@ -30,36 +33,97 @@ export default function Nutrition() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
-  // Queries
-  const { data: waterData, refetch: refetchWater } = trpc.nutrition.todayWater.useQuery();
-  const { data: todayMeals, refetch: refetchMeals } = trpc.nutrition.todayMeals.useQuery();
-  const { data: recommendation, refetch: refetchRec } = trpc.nutrition.latestRecommendation.useQuery();
-  const { data: stats } = trpc.nutrition.last7DaysStats.useQuery();
+  // ── Estado dos dados ──────────────────────────────────────────────────────
+  const [totalWater, setTotalWater] = useState(0);
+  const [todayMeals, setTodayMeals] = useState<MealEntry[]>([]);
+  const [recommendation, setRecommendation] = useState<{ content: string; updatedAt: Timestamp } | null>(null);
+  const [addingWater, setAddingWater] = useState(false);
+  const [analyzingMeal, setAnalyzingMeal] = useState(false);
+  const [generatingRec, setGeneratingRec] = useState(false);
 
-  // Mutations
-  const addWater = trpc.nutrition.addWater.useMutation({
-    onSuccess: (data) => { refetchWater(); toast.success(`+${data.logs[data.logs.length - 1]?.amountMl ?? 0}ml adicionados`); },
-  });
-  const analyzeMeal = trpc.nutrition.analyzeMeal.useMutation({
-    onSuccess: () => {
+  const loadData = useCallback(async () => {
+    if (!user) return;
+    try {
+      const [water, meals, rec] = await Promise.all([
+        firestoreService.getTodayWater(user.uid),
+        firestoreService.getTodayMeals(user.uid),
+        firestoreService.getNutritionRecommendation(user.uid),
+      ]);
+      setTotalWater(water);
+      setTodayMeals(meals);
+      setRecommendation(rec);
+    } catch (err) {
+      console.error("Erro ao carregar dados de nutrição:", err);
+    }
+  }, [user]);
+
+  useEffect(() => { if (user) loadData(); }, [user, loadData]);
+
+  const handleAddWater = async (ml: number) => {
+    if (!user) return;
+    setAddingWater(true);
+    try {
+      await firestoreService.addWater(user.uid, ml);
+      setTotalWater(prev => prev + ml);
+      toast.success(`+${ml}ml adicionados`);
+    } catch (err) {
+      toast.error("Erro ao registrar água.");
+    } finally {
+      setAddingWater(false);
+    }
+  };
+
+  const handleAnalyzeMeal = async () => {
+    if (!user) return;
+    if (!mealDescription.trim() && !photoBase64) {
+      toast.error("Descreva a refeição ou adicione uma foto.");
+      return;
+    }
+    setAnalyzingMeal(true);
+    try {
+      const description = mealDescription.trim() || "Refeição na foto";
+      const analysis = await geminiService.analyzeMeal(description, photoPreview || undefined);
+      await firestoreService.addMeal(user.uid, {
+        mealType,
+        description,
+        calories: analysis.calories,
+        proteinG: analysis.proteinG,
+        carbsG: analysis.carbsG,
+        fatG: analysis.fatG,
+        fiberG: analysis.fiberG,
+        summary: analysis.summary,
+      });
       toast.success("Refeição analisada e registrada!");
-      refetchMeals();
       setMealDescription("");
       setPhotoBase64(null);
       setPhotoPreview(null);
-    },
-    onError: () => toast.error("Erro ao analisar refeição."),
-  });
-  const generateRec = trpc.nutrition.generateRecommendation.useMutation({
-    onSuccess: () => { toast.success("Recomendações geradas!"); refetchRec(); },
-    onError: () => toast.error("Erro ao gerar recomendações."),
-  });
+      await loadData();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao analisar refeição.");
+    } finally {
+      setAnalyzingMeal(false);
+    }
+  };
 
-  const totalWater = waterData?.total ?? 0;
+  const handleGenerateRec = async () => {
+    if (!user) return;
+    setGeneratingRec(true);
+    try {
+      const content = await geminiService.generateNutritionRecommendation(profile as any);
+      await firestoreService.saveNutritionRecommendation(user.uid, content);
+      toast.success("Recomendações geradas!");
+      await loadData();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao gerar recomendações.");
+    } finally {
+      setGeneratingRec(false);
+    }
+  };
+
   const waterGoal = 2500;
   const waterPercent = Math.min((totalWater / waterGoal) * 100, 100);
 
-  const todayTotals = (todayMeals ?? []).reduce((acc, m) => ({
+  const todayTotals = todayMeals.reduce((acc, m) => ({
     calories: acc.calories + (m.calories ?? 0),
     protein: acc.protein + (m.proteinG ?? 0),
     carbs: acc.carbs + (m.carbsG ?? 0),
@@ -77,19 +141,39 @@ export default function Nutrition() {
     reader.readAsDataURL(file);
   };
 
-  // 7-day chart data
+  // Gráficos dos últimos 7 dias — construídos a partir das refeições de hoje
+  // (histórico completo é carregado sob demanda na aba dashboard)
+  const [weekMeals, setWeekMeals] = useState<MealEntry[]>([]);
+  const [weekWater, setWeekWater] = useState<{ amountMl: number; createdAt: Timestamp }[]>([]);
+
+  useEffect(() => {
+    if (activeTab !== "dashboard" || !user) return;
+    (async () => {
+      try {
+        const [meals, water] = await Promise.all([
+          firestoreService.getLast7DaysMeals(user.uid),
+          firestoreService.getLast7DaysWater(user.uid),
+        ]);
+        setWeekMeals(meals);
+        setWeekWater(water);
+      } catch (err) {
+        console.error("Erro ao carregar estatísticas:", err);
+      }
+    })();
+  }, [activeTab, user]);
+
   const last7Days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date();
     d.setDate(d.getDate() - (6 - i));
     d.setHours(0, 0, 0, 0);
     const dayEnd = new Date(d);
     dayEnd.setDate(dayEnd.getDate() + 1);
-    const dayMeals = (stats?.mealLogs ?? []).filter(m => {
-      const t = new Date(m.loggedAt).getTime();
+    const dayMeals = weekMeals.filter(m => {
+      const t = m.createdAt.toMillis();
       return t >= d.getTime() && t < dayEnd.getTime();
     });
-    const dayWater = (stats?.waterLogs ?? []).filter(w => {
-      const t = new Date(w.loggedAt).getTime();
+    const dayWater = weekWater.filter(w => {
+      const t = w.createdAt.toMillis();
       return t >= d.getTime() && t < dayEnd.getTime();
     });
     return {
@@ -147,8 +231,8 @@ export default function Nutrition() {
                 <button
                   key={ml}
                   className="btn-secondary py-2 text-sm flex-1"
-                  onClick={() => addWater.mutate({ amountMl: ml })}
-                  disabled={addWater.isPending}
+                  onClick={() => handleAddWater(ml)}
+                  disabled={addingWater}
                 >
                   +{ml}ml
                 </button>
@@ -157,7 +241,7 @@ export default function Nutrition() {
           </div>
 
           {/* Today's macros summary */}
-          {(todayMeals ?? []).length > 0 && (
+          {todayMeals.length > 0 && (
             <div className="dark-card">
               <p className="text-xs text-gray-300 uppercase tracking-wider mb-3 font-semibold">Macros de hoje</p>
               <div className="grid grid-cols-5 gap-2">
@@ -209,14 +293,11 @@ export default function Nutrition() {
             <div className="flex gap-2">
               <button
                 className="btn-primary py-2.5 text-sm flex-1"
-                onClick={() => {
-                  if (!mealDescription.trim() && !photoBase64) { toast.error("Descreva a refeição ou adicione uma foto."); return; }
-                  analyzeMeal.mutate({ description: mealDescription || "Refeição na foto", mealType, photoBase64: photoBase64 || undefined });
-                }}
-                disabled={analyzeMeal.isPending}
+                onClick={handleAnalyzeMeal}
+                disabled={analyzingMeal}
               >
-                {analyzeMeal.isPending ? <Loader2 size={14} className="animate-spin" /> : null}
-                Analisar texto
+                {analyzingMeal ? <Loader2 size={14} className="animate-spin" /> : null}
+                Analisar com IA
               </button>
               <button
                 className="btn-secondary py-2.5 text-sm w-auto px-4"
@@ -232,11 +313,11 @@ export default function Nutrition() {
           </div>
 
           {/* Today's meals list */}
-          {(todayMeals ?? []).length > 0 && (
+          {todayMeals.length > 0 && (
             <div>
               <h3 className="font-semibold text-gray-900 mb-3">Refeições de hoje</h3>
               <div className="space-y-2">
-                {todayMeals!.map(meal => (
+                {todayMeals.map(meal => (
                   <div key={meal.id} className="app-card py-3">
                     <div className="flex items-start justify-between">
                       <div className="flex-1 min-w-0">
@@ -249,9 +330,9 @@ export default function Nutrition() {
                     </div>
                     {(meal.proteinG || meal.carbsG || meal.fatG) && (
                       <div className="flex gap-3 mt-1.5">
-                        {meal.proteinG && <span className="text-xs text-gray-400">P: {Math.round(meal.proteinG)}g</span>}
-                        {meal.carbsG && <span className="text-xs text-gray-400">C: {Math.round(meal.carbsG)}g</span>}
-                        {meal.fatG && <span className="text-xs text-gray-400">G: {Math.round(meal.fatG)}g</span>}
+                        {meal.proteinG ? <span className="text-xs text-gray-400">P: {Math.round(meal.proteinG)}g</span> : null}
+                        {meal.carbsG ? <span className="text-xs text-gray-400">C: {Math.round(meal.carbsG)}g</span> : null}
+                        {meal.fatG ? <span className="text-xs text-gray-400">G: {Math.round(meal.fatG)}g</span> : null}
                       </div>
                     )}
                   </div>
@@ -267,10 +348,10 @@ export default function Nutrition() {
         <div className="px-5 py-4 space-y-4">
           <button
             className="btn-primary"
-            onClick={() => generateRec.mutate()}
-            disabled={generateRec.isPending}
+            onClick={handleGenerateRec}
+            disabled={generatingRec}
           >
-            {generateRec.isPending ? (
+            {generatingRec ? (
               <><Loader2 size={16} className="animate-spin" /> Gerando recomendações...</>
             ) : (
               <><Sparkles size={16} /> Gerar recomendações do dia</>
@@ -282,7 +363,7 @@ export default function Nutrition() {
               <div className="flex items-center gap-2 mb-3">
                 <Sparkles size={16} className="text-gray-500" />
                 <span className="text-xs text-gray-500">
-                  {new Date(recommendation.generatedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                  {new Date(recommendation.updatedAt.toMillis()).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
                 </span>
               </div>
               <div className="text-sm text-gray-700 leading-relaxed">

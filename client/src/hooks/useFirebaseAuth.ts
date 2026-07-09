@@ -24,6 +24,7 @@ export interface UserProfile {
   experienceLevel?: string;
   photoUrl?: string;
   evalPhotoUrl?: string;
+  onboardingCompleted?: boolean;
   createdAt: any;
   updatedAt: any;
   daysPerWeek?: number;
@@ -32,6 +33,37 @@ export interface UserProfile {
   physicalRestrictions?: string;
   preferredExercises?: string;
   avoidedExercises?: string;
+}
+
+/**
+ * Sincronização opcional com backend próprio (apenas quando existir).
+ * No Firebase Hosting não há backend; esta chamada falha silenciosamente
+ * e não bloqueia o fluxo de autenticação.
+ */
+async function tryBackendSession(firebaseUser: User): Promise<void> {
+  try {
+    const idToken = await firebaseUser.getIdToken();
+    const res = await fetch("/api/auth/firebase", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        idToken,
+        uid: firebaseUser.uid,
+        email: firebaseUser.email,
+        name: firebaseUser.displayName,
+      }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.token) {
+        localStorage.setItem("auth_token", data.token);
+      }
+    }
+  } catch {
+    // Backend indisponível (ex.: Firebase Hosting estático) — ignorar.
+    console.info("[auth] Backend opcional indisponível; usando apenas Firebase.");
+  }
 }
 
 export function useFirebaseAuth() {
@@ -46,14 +78,12 @@ export function useFirebaseAuth() {
         setLoading(true);
         setUser(authUser);
         if (authUser) {
-          console.log("Usuário autenticado no Firebase:", authUser.uid);
           const userDocRef = doc(db, "users", authUser.uid);
           const userDocSnap = await getDoc(userDocRef);
-          
+
           if (userDocSnap.exists()) {
             setProfile(userDocSnap.data() as UserProfile);
           } else {
-            console.log("Criando perfil inicial no Firestore...");
             const initialProfile = {
               uid: authUser.uid,
               email: authUser.email || "",
@@ -61,7 +91,6 @@ export function useFirebaseAuth() {
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp(),
             };
-            // Tenta criar o documento. Se falhar aqui, é erro de permissão no Firebase Console.
             await setDoc(userDocRef, initialProfile, { merge: true });
             setProfile(initialProfile as any);
           }
@@ -71,7 +100,6 @@ export function useFirebaseAuth() {
         setError(null);
       } catch (err) {
         console.error("Erro ao carregar/criar perfil no Firestore:", err);
-        // Não bloqueia o loading se for erro de permissão, para permitir que o usuário veja a tela
       } finally {
         setLoading(false);
       }
@@ -82,12 +110,9 @@ export function useFirebaseAuth() {
   const register = async (email: string, password: string, name: string) => {
     try {
       setLoading(true);
-      console.log("[register] Iniciando com email:", email);
       const result = await createUserWithEmailAndPassword(auth, email, password);
-      console.log("[register] Usuario criado com uid:", result.user.uid);
       await updateFirebaseProfile(result.user, { displayName: name });
-      console.log("[register] Perfil atualizado");
-      
+
       const newProfile = {
         uid: result.user.uid,
         email,
@@ -95,44 +120,13 @@ export function useFirebaseAuth() {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
-      
-      console.log("[register] Salvando no Firestore...");
+
       await setDoc(doc(db, "users", result.user.uid), newProfile, { merge: true });
-      console.log("[register] Firestore salvo");
       setProfile(newProfile as any);
-      console.log("[register] Perfil setado");
-      
-      // Criar sessao de backend
-      const idToken = await result.user.getIdToken();
-      console.log("[useFirebaseAuth] Chamando /api/auth/firebase com uid:", result.user.uid);
-      const authResponse = await fetch("/api/auth/firebase", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          idToken,
-          uid: result.user.uid,
-          email: result.user.email,
-          name: result.user.displayName,
-        }),
-      });
-      console.log("[useFirebaseAuth] Response status:", authResponse.status);
-      if (!authResponse.ok) {
-        const errorData = await authResponse.json();
-        console.error("[useFirebaseAuth] Erro na autenticação:", errorData);
-      } else {
-        const data = await authResponse.json();
-        console.log("[useFirebaseAuth] Autenticação bem-sucedida:", data);
-        console.log("[useFirebaseAuth] data.token existe?", !!data.token);
-        if (data.token) {
-          localStorage.setItem("auth_token", data.token);
-          console.log("[useFirebaseAuth] Token armazenado no localStorage");
-          console.log("[useFirebaseAuth] Token verificado:", localStorage.getItem("auth_token")?.substring(0, 20));
-        } else {
-          console.error("[useFirebaseAuth] data.token não existe! Chaves:", Object.keys(data));
-        }
-      }
-      
+
+      // Sessão de backend é opcional — não bloqueia o cadastro
+      void tryBackendSession(result.user);
+
       return result.user;
     } catch (err) {
       const errorMsg = translateFirebaseError(err);
@@ -147,38 +141,10 @@ export function useFirebaseAuth() {
     try {
       setLoading(true);
       const result = await signInWithEmailAndPassword(auth, email, password);
-      
-      // Criar sessao de backend
-      const idToken = await result.user.getIdToken();
-      console.log("[useFirebaseAuth] Chamando /api/auth/firebase com uid:", result.user.uid);
-      const authResponse = await fetch("/api/auth/firebase", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          idToken,
-          uid: result.user.uid,
-          email: result.user.email,
-          name: result.user.displayName,
-        }),
-      });
-      console.log("[useFirebaseAuth] Response status:", authResponse.status);
-      if (!authResponse.ok) {
-        const errorData = await authResponse.json();
-        console.error("[useFirebaseAuth] Erro na autenticação:", errorData);
-      } else {
-        const data = await authResponse.json();
-        console.log("[useFirebaseAuth] Autenticação bem-sucedida:", data);
-        console.log("[useFirebaseAuth] data.token existe?", !!data.token);
-        if (data.token) {
-          localStorage.setItem("auth_token", data.token);
-          console.log("[useFirebaseAuth] Token armazenado no localStorage");
-          console.log("[useFirebaseAuth] Token verificado:", localStorage.getItem("auth_token")?.substring(0, 20));
-        } else {
-          console.error("[useFirebaseAuth] data.token não existe! Chaves:", Object.keys(data));
-        }
-      }
-      
+
+      // Sessão de backend é opcional — não bloqueia o login
+      void tryBackendSession(result.user);
+
       return result.user;
     } catch (err) {
       const errorMsg = translateFirebaseError(err);
@@ -207,12 +173,11 @@ export function useFirebaseAuth() {
 
   const updateProfile = async (updates: Partial<UserProfile>) => {
     if (!auth.currentUser) throw new Error("Usuário não autenticado no Firebase");
-    
+
     try {
-      console.log("Atualizando perfil no Firestore para UID:", auth.currentUser.uid);
       const userDocRef = doc(db, "users", auth.currentUser.uid);
-      
-      // Remove campos nulos ou indefinidos para evitar erros no Firestore
+
+      // Remove campos indefinidos para evitar erros no Firestore
       const cleanUpdates = Object.fromEntries(
         Object.entries(updates).filter(([_, v]) => v !== undefined)
       );
@@ -223,11 +188,10 @@ export function useFirebaseAuth() {
       };
 
       await setDoc(userDocRef, finalData, { merge: true });
-      console.log("Firestore Update Success!");
-      
+
       setProfile((prev) => (prev ? { ...prev, ...finalData } : (finalData as any)));
     } catch (err: any) {
-      console.error("ERRO CRÍTICO NO UPDATEPROFILE:", err);
+      console.error("Erro no updateProfile:", err);
       const errorMsg = translateFirebaseError(err);
       throw new Error(errorMsg);
     }
@@ -249,14 +213,14 @@ export function useFirebaseAuth() {
 
 function translateFirebaseError(err: unknown): string {
   if (!(err instanceof Error)) return "Erro desconhecido";
-  
+
   const msg = err.message.toLowerCase();
   const code = (err as any).code;
 
   if (code === "permission-denied" || msg.includes("permission")) {
     return "Acesso negado ao banco de dados. Por favor, verifique se as Regras do Firestore foram publicadas no Firebase Console.";
   }
-  
+
   if (msg.includes("too large") || msg.includes("limit")) {
     return "Os dados (ou fotos) são muito grandes para o banco de dados.";
   }
@@ -264,9 +228,12 @@ function translateFirebaseError(err: unknown): string {
   switch (code) {
     case "auth/email-already-in-use": return "Este e-mail já está em uso.";
     case "auth/invalid-email": return "E-mail inválido.";
-    case "auth/weak-password": return "Senha muito fraca.";
+    case "auth/weak-password": return "Senha muito fraca. Use pelo menos 6 caracteres.";
     case "auth/user-not-found": return "Usuário não encontrado.";
     case "auth/wrong-password": return "Senha incorreta.";
+    case "auth/invalid-credential": return "E-mail ou senha incorretos.";
+    case "auth/too-many-requests": return "Muitas tentativas. Aguarde alguns minutos.";
+    case "auth/network-request-failed": return "Falha de conexão. Verifique sua internet.";
     default: return err.message || "Erro ao processar solicitação.";
   }
 }

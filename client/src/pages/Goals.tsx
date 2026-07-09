@@ -1,14 +1,14 @@
-import { useState, useEffect } from "react";
-import { trpc } from "@/lib/trpc";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import AppLayout from "@/components/AppLayout";
+import { firestoreService, GoalsData } from "@/hooks/useFirebaseFirestore";
 import { ArrowLeft, Target, Loader2 } from "lucide-react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 
 export default function Goals() {
   const [, navigate] = useLocation();
-  const { isAuthenticated, loading } = useAuth();
+  const { user, isAuthenticated, loading } = useAuth();
 
   // Redireciona para login se não autenticado
   useEffect(() => {
@@ -17,11 +17,21 @@ export default function Goals() {
       navigate("/login");
     }
   }, [isAuthenticated, loading, navigate]);
-  const { data: goals, refetch } = trpc.goals.get.useQuery();
-  const saveGoals = trpc.goals.save.useMutation({
-    onSuccess: () => { toast.success("Meta salva!"); refetch(); },
-    onError: () => toast.error("Erro ao salvar meta."),
-  });
+
+  const [goals, setGoals] = useState<GoalsData | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const loadGoals = useCallback(async () => {
+    if (!user) return;
+    try {
+      const data = await firestoreService.getGoals(user.uid);
+      setGoals(data);
+    } catch (err) {
+      console.error("Erro ao carregar metas:", err);
+    }
+  }, [user]);
+
+  useEffect(() => { if (user) loadGoals(); }, [user, loadGoals]);
 
   const [form, setForm] = useState({
     mainGoal: "",
@@ -47,15 +57,25 @@ export default function Goals() {
 
   const set = (f: string, v: string) => setForm(prev => ({ ...prev, [f]: v }));
 
-  const handleSave = () => {
-    saveGoals.mutate({
-      mainGoal: form.mainGoal || undefined,
-      currentWeightKg: form.currentWeightKg ? parseFloat(form.currentWeightKg) : undefined,
-      targetWeightKg: form.targetWeightKg ? parseFloat(form.targetWeightKg) : undefined,
-      targetBodyFatPercent: form.targetBodyFatPercent ? parseFloat(form.targetBodyFatPercent) : undefined,
-      weeklyGoalKg: form.weeklyGoalKg ? parseFloat(form.weeklyGoalKg) : undefined,
-      targetDate: form.targetDate || undefined,
-    });
+  const handleSave = async () => {
+    if (!user) return;
+    setSaving(true);
+    try {
+      await firestoreService.saveGoals(user.uid, {
+        mainGoal: form.mainGoal || undefined,
+        currentWeightKg: form.currentWeightKg ? parseFloat(form.currentWeightKg) : undefined,
+        targetWeightKg: form.targetWeightKg ? parseFloat(form.targetWeightKg) : undefined,
+        targetBodyFatPercent: form.targetBodyFatPercent ? parseFloat(form.targetBodyFatPercent) : undefined,
+        weeklyGoalKg: form.weeklyGoalKg ? parseFloat(form.weeklyGoalKg) : undefined,
+        targetDate: form.targetDate || undefined,
+      });
+      toast.success("Meta salva!");
+      await loadGoals();
+    } catch (err) {
+      toast.error("Erro ao salvar meta.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Calculate progress
@@ -175,9 +195,9 @@ export default function Goals() {
         <button
           className="btn-primary"
           onClick={handleSave}
-          disabled={saveGoals.isPending}
+          disabled={saving}
         >
-          {saveGoals.isPending ? <Loader2 size={16} className="animate-spin" /> : <Target size={16} />}
+          {saving ? <Loader2 size={16} className="animate-spin" /> : <Target size={16} />}
           Salvar meta
         </button>
       </div>
