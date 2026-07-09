@@ -790,7 +790,7 @@ export default function IATrainer() {
                         className="w-full flex items-center justify-center gap-2 py-4 bg-red-500 text-white rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-red-600 transition-all active:scale-[0.98] shadow-lg shadow-red-200"
                       >
                         <Trash2 size={18} />
-                        Excluir esta avaliação
+                        EXCLUIR ESTA AVALIAÇÃO
                       </button>
                       <button 
                         onClick={() => setSelectedEntry(null)}
@@ -845,7 +845,7 @@ export default function IATrainer() {
                                 try {
                                   await firestoreService.deleteWorkout(user.uid, version.id);
                                   toast.success("Versão excluída!");
-                                  loadWorkouts();
+                                  loadVersions();
                                 } catch (err) {
                                   toast.error("Erro ao excluir.");
                                 }
@@ -869,7 +869,95 @@ export default function IATrainer() {
             </div>
           )}
         </div>
-      </div>
+
+      {/* Modal de Detalhes da Evolução (Fora das abas para garantir visibilidade) */}
+      {selectedEntry && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between p-4 border-b">
+              <div>
+                <h3 className="font-bold text-gray-900">Detalhes da Avaliação</h3>
+                <p className="text-xs text-gray-400">
+                  {new Date(selectedEntry.createdAt.toMillis()).toLocaleString('pt-BR', { 
+                    day: 'numeric', 
+                    month: 'long', 
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  })}
+                </p>
+              </div>
+              <button 
+                onClick={() => setSelectedEntry(null)}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <X size={20} className="text-gray-500" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
+              {selectedEntry.photoUrl && (
+                <div className="rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
+                  <img src={selectedEntry.photoUrl} alt="Evolução" className="w-full h-64 object-cover" />
+                </div>
+              )}
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-primary/5 rounded-2xl p-3 text-center border border-primary/10">
+                  <span className="block text-[10px] font-bold text-primary uppercase mb-1">Peso</span>
+                  <span className="text-lg font-bold text-gray-900">{selectedEntry.weightKg || '--'} <small className="text-[10px] font-normal">kg</small></span>
+                </div>
+                <div className="bg-primary/5 rounded-2xl p-3 text-center border border-primary/10">
+                  <span className="block text-[10px] font-bold text-primary uppercase mb-1">BF</span>
+                  <span className="text-lg font-bold text-gray-900">{selectedEntry.bodyFatPercent || '--'} <small className="text-[10px] font-normal">%</small></span>
+                </div>
+                <div className="bg-primary/5 rounded-2xl p-3 text-center border border-primary/10">
+                  <span className="block text-[10px] font-bold text-primary uppercase mb-1">Cintura</span>
+                  <span className="text-lg font-bold text-gray-900">{selectedEntry.waistCm || '--'} <small className="text-[10px] font-normal">cm</small></span>
+                </div>
+                <div className="bg-gray-50 rounded-2xl p-3 text-center border border-gray-100">
+                  <span className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Peitoral</span>
+                  <span className="text-sm font-bold text-gray-900">{selectedEntry.chestCm || '--'} <small className="text-[10px] font-normal">cm</small></span>
+                </div>
+                <div className="bg-gray-50 rounded-2xl p-3 text-center border border-gray-100">
+                  <span className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Braço</span>
+                  <span className="text-sm font-bold text-gray-900">{selectedEntry.armCm || '--'} <small className="text-[10px] font-normal">cm</small></span>
+                </div>
+                <div className="bg-gray-50 rounded-2xl p-3 text-center border border-gray-100">
+                  <span className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Coxa</span>
+                  <span className="text-sm font-bold text-gray-900">{selectedEntry.thighCm || '--'} <small className="text-[10px] font-normal">cm</small></span>
+                </div>
+              </div>
+
+              <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                <h4 className="text-xs font-bold text-gray-400 uppercase mb-3 flex items-center gap-2">
+                  <Info size={14} className="text-primary" />
+                  Análise da IA
+                </h4>
+                <div className="prose prose-sm text-gray-700 max-w-none">
+                  <Streamdown>{selectedEntry.notes || ""}</Streamdown>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 pb-10 border-t bg-white flex flex-col gap-3 sticky bottom-0 mt-auto">
+              <button 
+                onClick={() => handleDeleteEntry(selectedEntry.id)}
+                className="w-full flex items-center justify-center gap-2 py-4 bg-red-500 text-white rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-red-600 transition-all active:scale-[0.98] shadow-lg shadow-red-200"
+              >
+                <Trash2 size={18} />
+                EXCLUIR ESTA AVALIAÇÃO
+              </button>
+              <button 
+                onClick={() => setSelectedEntry(null)}
+                className="w-full py-4 bg-gray-100 text-gray-500 rounded-2xl text-sm font-bold hover:bg-gray-200 transition-all"
+              >
+                Voltar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppLayout>
   );
 }
