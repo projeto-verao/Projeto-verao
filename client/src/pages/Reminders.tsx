@@ -29,18 +29,18 @@ import {
 import { toast } from "sonner";
 
 const REMINDER_TYPES = [
-  { id: "water", title: "Beber água", description: "Lembrete para hidratação constante", icon: Droplets, color: "text-blue-500" },
-  { id: "movement", title: "Se movimentar", description: "Evite ficar muito tempo sentado", icon: Activity, color: "text-orange-500" },
-  { id: "food_log", title: "Registrar alimentação", description: "Não esqueça de anotar suas refeições", icon: Utensils, color: "text-green-500" },
-  { id: "calories", title: "Meta de calorias", description: "Acompanhe seu balanço energético", icon: Flame, color: "text-red-500" },
-  { id: "protein", title: "Meta de proteínas", description: "Garanta o aporte proteico diário", icon: Beef, color: "text-amber-700" },
-  { id: "training_remind", title: "Lembrete de treino", description: "Hora de ir para a academia", icon: Dumbbell, color: "text-slate-700" },
-  { id: "sleep", title: "Hora de dormir", description: "Mantenha a higiene do sono", icon: Moon, color: "text-indigo-600" },
-  { id: "weight", title: "Registrar peso", description: "Acompanhe sua evolução na balança", icon: Scale, color: "text-gray-600" },
-  { id: "evolution_photo", title: "Foto de evolução", description: "Registre seu progresso visual", icon: Camera, color: "text-purple-500" },
-  { id: "measurements", title: "Atualizar medidas", description: "Mantenha suas medidas em dia", icon: Ruler, color: "text-blue-600" },
-  { id: "supplements", title: "Suplementos", description: "Não esqueça de tomar sua suplementação", icon: Pill, color: "text-cyan-500" },
-  { id: "training_log", title: "Registrar treino", description: "Anote as cargas e repetições", icon: CheckCircle2, color: "text-emerald-600" },
+  { id: "water", title: "Beber água", description: "Lembrete para hidratação constante", icon: Droplets, color: "text-blue-500", repetitionType: 'daily', time: '08:00', intervalHours: 2, daysOfWeek: [1, 2, 3, 4, 5], sound: true, vibration: true, repeatUntilDone: false },
+  { id: "movement", title: "Se movimentar", description: "Evite ficar muito tempo sentado", icon: Activity, color: "text-orange-500", repetitionType: 'every_x_hours', time: '10:00', intervalHours: 2, daysOfWeek: [1, 2, 3, 4, 5], sound: true, vibration: true, repeatUntilDone: false },
+  { id: "food_log", title: "Registrar alimentação", description: "Não esqueça de anotar suas refeições", icon: Utensils, color: "text-green-500", repetitionType: 'daily', time: '12:00', intervalHours: 2, daysOfWeek: [1, 2, 3, 4, 5], sound: true, vibration: true, repeatUntilDone: false },
+  { id: "calories", title: "Meta de calorias", description: "Acompanhe seu balanço energético", icon: Flame, color: "text-red-500", repetitionType: 'daily', time: '18:00', intervalHours: 2, daysOfWeek: [1, 2, 3, 4, 5], sound: true, vibration: true, repeatUntilDone: false },
+  { id: "protein", title: "Meta de proteínas", description: "Garanta o aporte proteico diário", icon: Beef, color: "text-amber-700", repetitionType: 'daily', time: '18:00', intervalHours: 2, daysOfWeek: [1, 2, 3, 4, 5], sound: true, vibration: true, repeatUntilDone: false },
+  { id: "training_remind", title: "Lembrete de treino", description: "Hora de ir para a academia", icon: Dumbbell, color: "text-slate-700", repetitionType: 'daily', time: '17:00', intervalHours: 2, daysOfWeek: [1, 2, 3, 4, 5], sound: true, vibration: true, repeatUntilDone: false },
+  { id: "sleep", title: "Hora de dormir", description: "Mantenha a higiene do sono", icon: Moon, color: "text-indigo-600", repetitionType: 'daily', time: '22:00', intervalHours: 2, daysOfWeek: [1, 2, 3, 4, 5], sound: true, vibration: true, repeatUntilDone: false },
+  { id: "weight", title: "Registrar peso", description: "Acompanhe sua evolução na balança", icon: Scale, color: "text-gray-600", repetitionType: 'daily', time: '07:00', intervalHours: 2, daysOfWeek: [1, 2, 3, 4, 5], sound: true, vibration: true, repeatUntilDone: false },
+  { id: "evolution_photo", title: "Foto de evolução", description: "Registre seu progresso visual", icon: Camera, color: "text-purple-500", repetitionType: 'specific_days', time: '09:00', intervalHours: 2, daysOfWeek: [0], sound: true, vibration: true, repeatUntilDone: false },
+  { id: "measurements", title: "Atualizar medidas", description: "Mantenha suas medidas em dia", icon: Ruler, color: "text-blue-600", repetitionType: 'specific_days', time: '09:00', intervalHours: 2, daysOfWeek: [0], sound: true, vibration: true, repeatUntilDone: false },
+  { id: "supplements", title: "Suplementos", description: "Não esqueça de tomar sua suplementação", icon: Pill, color: "text-cyan-500", repetitionType: 'every_x_hours', time: '09:00', intervalHours: 4, daysOfWeek: [1, 2, 3, 4, 5], sound: true, vibration: true, repeatUntilDone: false },
+  { id: "training_log", title: "Registrar treino", description: "Anote as cargas e repetições", icon: CheckCircle2, color: "text-emerald-600", repetitionType: 'training_days', time: '19:00', intervalHours: 2, daysOfWeek: [1, 3, 5], sound: true, vibration: true, repeatUntilDone: false },
 ];
 
 const REPETITION_OPTIONS = [
@@ -108,16 +108,45 @@ export default function Reminders() {
       setSmartStatus(status);
     } catch (err) {
       console.error("Erro ao verificar status inteligente:", err);
+      throw err; // Re-throw to be caught by loadReminders
     }
   }, [user]);
 
   const loadReminders = async () => {
+    if (!user) {
+      console.warn("loadReminders: User not available, skipping loading.");
+      setLoading(false);
+      return;
+    }
     try {
-      const configs = await firestoreService.getReminderConfigs(user!.uid);
+      const configs = await firestoreService.getReminderConfigs(user.uid);
       
       // Initialize with default values if not exists
+      let finalConfigs = configs;
+      if (configs.length === 0) {
+        // If no configs exist, create default ones and save them
+        const defaultReminders = REMINDER_TYPES.map(type => ({
+          id: type.id,
+          type: type.id,
+          title: type.title,
+          description: type.description,
+          icon: type.id,
+          enabled: false,
+          repetitionType: 'daily',
+          time: '08:00',
+          intervalHours: 2,
+          daysOfWeek: [1, 2, 3, 4, 5],
+          sound: true,
+          vibration: true,
+          repeatUntilDone: false
+        })) as ReminderConfig[];
+          await firestoreService.saveAllReminders(user.uid, defaultReminders);
+        finalConfigs = defaultReminders;
+      }
+
+      // Ensure all REMINDER_TYPES are present, even if new types are added later
       const merged = REMINDER_TYPES.map(type => {
-        const existing = configs.find(c => c.id === type.id);
+        const existing = finalConfigs.find(c => c.id === type.id);
         if (existing) return existing;
         return {
           id: type.id,
@@ -137,10 +166,31 @@ export default function Reminders() {
       });
       
       setReminders(merged);
-      await checkSmartStatus();
+      try {
+        await checkSmartStatus();
+      } catch (smartStatusError) {
+        console.error("Erro ao verificar status inteligente:", smartStatusError);
+        // Do not re-throw, allow reminders to load even if smart status fails
+      }
     } catch (error) {
       console.error("Erro ao carregar lembretes:", error);
       toast.error("Erro ao carregar lembretes");
+      // Ensure reminders are still set to an empty array or defaults if loading fails completely
+      setReminders(REMINDER_TYPES.map(type => ({
+        id: type.id,
+        type: type.id,
+        title: type.title,
+        description: type.description,
+        icon: type.id,
+        enabled: false,
+        repetitionType: 'daily',
+        time: '08:00',
+        intervalHours: 2,
+        daysOfWeek: [1, 2, 3, 4, 5],
+        sound: true,
+        vibration: true,
+        repeatUntilDone: false
+      })) as ReminderConfig[]);
     } finally {
       setLoading(false);
     }
@@ -157,7 +207,8 @@ export default function Reminders() {
     setReminders(updatedReminders);
 
     try {
-      await firestoreService.updateReminderConfig(user!.uid, { id, enabled: newStatus });
+      if (!user) return;
+      await firestoreService.updateReminderConfig(user.uid, { id, enabled: newStatus });
       toast.success(`${reminder.title} ${newStatus ? 'ativado' : 'desativado'}`);
     } catch (error) {
       console.error("Erro ao atualizar lembrete:", error);
@@ -169,7 +220,8 @@ export default function Reminders() {
 
   const saveConfig = async (config: ReminderConfig) => {
     try {
-      await firestoreService.updateReminderConfig(user!.uid, config);
+      if (!user) return;
+      await firestoreService.updateReminderConfig(user.uid, config);
       setReminders(reminders.map(r => r.id === config.id ? config : r));
       setIsConfiguring(false);
       setSelectedReminder(null);
@@ -181,6 +233,10 @@ export default function Reminders() {
   };
 
   const applyPreset = async (presetType: 'basic' | 'fitness') => {
+    if (!user) {
+      toast.error("Usuário não autenticado. Por favor, faça login novamente.");
+      return;
+    }
     const updated = [...reminders];
     const idsToEnable = presetType === 'basic' 
       ? ['water', 'food_log', 'training_remind']
@@ -188,11 +244,25 @@ export default function Reminders() {
 
     updated.forEach(r => {
       r.enabled = idsToEnable.includes(r.id);
+      // For presets, also set default repetitionType, time, etc., if they are being enabled
+      if (r.enabled) {
+        const defaultType = REMINDER_TYPES.find(type => type.id === r.id);
+        if (defaultType) {
+          r.repetitionType = defaultType.repetitionType || 'daily';
+          r.time = defaultType.time || '08:00';
+          r.intervalHours = defaultType.intervalHours || 2;
+          r.daysOfWeek = defaultType.daysOfWeek || [1, 2, 3, 4, 5];
+          r.sound = defaultType.sound ?? true;
+          r.vibration = defaultType.vibration ?? true;
+          r.repeatUntilDone = defaultType.repeatUntilDone ?? false;
+        }
+      }
     });
 
     try {
       setLoading(true);
-      await firestoreService.saveAllReminders(user!.uid, updated);
+      if (!user) return;
+      await firestoreService.saveAllReminders(user.uid, updated);
       setReminders(updated);
       toast.success(`Configuração ${presetType === 'basic' ? 'Básica' : 'Fitness'} aplicada!`);
     } catch (error) {
