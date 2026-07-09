@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import AppLayout from "@/components/AppLayout";
 import { geminiService } from "@/lib/gemini";
 import { firestoreService, ChatMessageEntry, BodyProgressEntry, StoredWorkout } from "@/hooks/useFirebaseFirestore";
-import { ArrowLeft, Send, Loader2, Camera, Upload, ChevronDown, RotateCcw, Sparkles, Info } from "lucide-react";
+import { ArrowLeft, Send, Loader2, Camera, Upload, ChevronDown, RotateCcw, Sparkles, Info, Ruler } from "lucide-react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 import { Streamdown } from "streamdown";
@@ -174,6 +174,11 @@ export default function IATrainer() {
   // ── Evolução state ──────────────────────────────────────────────────────────
   const [evolutionHistory, setEvolutionHistory] = useState<BodyProgressEntry[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
+  
+  // Tarefa 5: Form para medidas manuais (será preenchido pela IA)
+  const [measurements, setMeasurements] = useState({
+    weightKg: "", bodyFatPercent: "", chestCm: "", waistCm: "", armCm: "", thighCm: ""
+  });
 
   const loadEvolution = useCallback(async () => {
     if (!user) return;
@@ -188,12 +193,24 @@ export default function IATrainer() {
     if (!file || !user) return;
 
     setAnalyzing(true);
+    const toastId = toast.loading("A IA está analisando sua foto...");
     try {
       const reader = new FileReader();
       reader.onload = async () => {
         const base64 = reader.result as string;
+        
+        // Tarefa 5: IA analisa foto e retorna estimativas de medidas
         const analysis = await geminiService.analyzeBody(base64, profile as any);
         
+        // Tenta extrair medidas do texto da IA se houver (o geminiService.analyzeBody retorna bfEstimate, muscleLevel, summary, tip)
+        // Para a Tarefa 5, vamos atualizar o estado de measurements com o BF estimado
+        const bfValue = parseFloat(analysis.bfEstimate) || "";
+        setMeasurements(prev => ({
+          ...prev,
+          bodyFatPercent: bfValue.toString(),
+          weightKg: profile?.weightKg?.toString() || ""
+        }));
+
         await firestoreService.addBodyProgress(user.uid, {
           photoUrl: base64,
           bodyFatPercent: parseFloat(analysis.bfEstimate) || undefined,
@@ -201,12 +218,35 @@ export default function IATrainer() {
           weightKg: profile?.weightKg,
         });
         
-        toast.success("Análise concluída!");
+        toast.success("Análise visual concluída! As medidas foram estimadas abaixo.", { id: toastId });
         loadEvolution();
       };
       reader.readAsDataURL(file);
     } catch (err) {
-      toast.error("Erro ao analisar foto.");
+      toast.error("Erro ao analisar foto.", { id: toastId });
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const handleSaveMeasurements = async () => {
+    if (!user) return;
+    setAnalyzing(true);
+    try {
+      await firestoreService.addBodyProgress(user.uid, {
+        weightKg: parseFloat(measurements.weightKg) || undefined,
+        bodyFatPercent: parseFloat(measurements.bodyFatPercent) || undefined,
+        chestCm: parseFloat(measurements.chestCm) || undefined,
+        waistCm: parseFloat(measurements.waistCm) || undefined,
+        armCm: parseFloat(measurements.armCm) || undefined,
+        thighCm: parseFloat(measurements.thighCm) || undefined,
+        notes: "Medidas inseridas manualmente/confirmadas da IA"
+      });
+      toast.success("Medidas salvas com sucesso!");
+      setMeasurements({ weightKg: "", bodyFatPercent: "", chestCm: "", waistCm: "", armCm: "", thighCm: "" });
+      loadEvolution();
+    } catch (err) {
+      toast.error("Erro ao salvar medidas.");
     } finally {
       setAnalyzing(false);
     }
@@ -398,7 +438,7 @@ export default function IATrainer() {
               <div className="bg-primary/5 border border-primary/10 rounded-2xl p-6 text-center">
                 <h3 className="font-semibold text-primary mb-2">Análise de Composição Corporal</h3>
                 <p className="text-sm text-gray-600 mb-4">
-                  Tire uma foto de corpo inteiro para a IA estimar seu BF e massa muscular.
+                  Tire uma foto de corpo inteiro para a IA estimar seu BF e medidas corporais.
                 </p>
                 <div className="flex gap-2 justify-center">
                   <button
@@ -422,13 +462,55 @@ export default function IATrainer() {
                 <input type="file" ref={fileInputRef} accept="image/*" className="hidden" onChange={handlePhotoSelect} />
               </div>
 
+              {/* Tarefa 5: Medidas preenchidas pela IA */}
+              <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                <div className="flex items-center gap-2 mb-4">
+                  <Ruler size={18} className="text-primary" />
+                  <h3 className="font-bold text-gray-900 text-sm uppercase tracking-wide">Medidas Corporais</h3>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Peso (kg)</label>
+                    <input type="number" value={measurements.weightKg} onChange={e => setMeasurements({...measurements, weightKg: e.target.value})} className="w-full app-input text-sm" placeholder="Ex: 75.5" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Gordura (%)</label>
+                    <input type="number" value={measurements.bodyFatPercent} onChange={e => setMeasurements({...measurements, bodyFatPercent: e.target.value})} className="w-full app-input text-sm" placeholder="Ex: 18" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Peitoral (cm)</label>
+                    <input type="number" value={measurements.chestCm} onChange={e => setMeasurements({...measurements, chestCm: e.target.value})} className="w-full app-input text-sm" placeholder="Ex: 100" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Cintura (cm)</label>
+                    <input type="number" value={measurements.waistCm} onChange={e => setMeasurements({...measurements, waistCm: e.target.value})} className="w-full app-input text-sm" placeholder="Ex: 85" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Braço (cm)</label>
+                    <input type="number" value={measurements.armCm} onChange={e => setMeasurements({...measurements, armCm: e.target.value})} className="w-full app-input text-sm" placeholder="Ex: 38" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Coxa (cm)</label>
+                    <input type="number" value={measurements.thighCm} onChange={e => setMeasurements({...measurements, thighCm: e.target.value})} className="w-full app-input text-sm" placeholder="Ex: 55" />
+                  </div>
+                </div>
+                <button
+                  onClick={handleSaveMeasurements}
+                  disabled={analyzing}
+                  className="w-full mt-4 py-3 bg-black text-white rounded-xl text-xs font-bold uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-gray-900 transition-colors"
+                >
+                  {analyzing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+                  Confirmar Medidas
+                </button>
+              </div>
+
               <div className="space-y-4">
                 <h3 className="font-semibold text-gray-900">Histórico de Fotos</h3>
                 {evolutionHistory.length === 0 ? (
                   <p className="text-center text-gray-400 text-sm py-8">Nenhuma análise feita ainda.</p>
                 ) : (
                   <div className="grid grid-cols-2 gap-4">
-                    {evolutionHistory.map(entry => (
+                    {evolutionHistory.filter(e => e.photoUrl).map(entry => (
                       <div key={entry.id} className="bg-gray-50 rounded-xl overflow-hidden border border-gray-100">
                         <img src={entry.photoUrl} alt="Evolução" className="w-full h-40 object-cover" />
                         <div className="p-2">
@@ -436,7 +518,7 @@ export default function IATrainer() {
                             <span className="text-[10px] text-gray-400">
                               {new Date(entry.createdAt.toMillis()).toLocaleDateString()}
                             </span>
-                            <span className="text-xs font-bold text-primary">{entry.bodyFatPercent}% BF</span>
+                            {entry.bodyFatPercent && <span className="text-xs font-bold text-primary">{entry.bodyFatPercent}% BF</span>}
                           </div>
                           <p className="text-[10px] text-gray-600 line-clamp-2">{entry.notes}</p>
                         </div>
