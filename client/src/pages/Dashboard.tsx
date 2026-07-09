@@ -5,7 +5,7 @@ import AppLayout from "@/components/AppLayout";
 import { geminiService } from "@/lib/gemini";
 import { firestoreService, StoredWorkout } from "@/hooks/useFirebaseFirestore";
 import {
-  Utensils, Target, RefreshCw, Loader2, ChevronRight, Timer, X, Sparkles, Activity, Trash2, CheckCircle2, CheckSquare
+  Utensils, Target, RefreshCw, Loader2, ChevronRight, Timer, X, Sparkles, Activity, Trash2, CheckCircle2
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -30,7 +30,9 @@ export default function Dashboard() {
   const [workoutLoading, setWorkoutLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [weekCompleted, setWeekCompleted] = useState(0);
+  const [currentWeek, setCurrentWeek] = useState(1);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [nextWorkoutInfo, setNextWorkoutInfo] = useState<{ dayTitle: string; timing: string } | null>(null);
 
   const target = profile?.daysPerWeek || 4;
 
@@ -113,30 +115,67 @@ export default function Dashboard() {
         totalExercises,
         duration: profile?.minutesPerSession || 60,
       });
-      toast.success(`Treino do dia ${dayNumber} concluído! 🎉`);
-      
-      // Tarefa 2: Fechar automaticamente a tela do treino e limpar estado
+
+      // Fechar automaticamente a tela do treino e limpar estado
       setSelectedDay(null);
       setCompletedSets({});
       setRestTimer(null);
-      
+
       await loadData();
+
+      // ── Ajuste 3: Informar o próximo treino ──────────────────────────────
+      // Identificar qual é o próximo dia de treino
+      const days = activeWorkout.days || [];
+      const nextDayIndex = days.findIndex(d => d.dayNumber > dayNumber);
+      const hasMoreDaysThisWeek = nextDayIndex !== -1;
+
+      if (hasMoreDaysThisWeek) {
+        const nextDay = days[nextDayIndex];
+        const nextDayNumber = nextDay.dayNumber;
+        const remainingThisWeek = weekCompleted + 1 < target;
+
+        setNextWorkoutInfo({
+          dayTitle: nextDay.title || `Treino do dia ${nextDayNumber}`,
+          timing: remainingThisWeek ? "Amanhã" : "Na próxima semana",
+        });
+
+        toast.success(`Treino do dia ${dayNumber} concluído! 🎉 Seu próximo treino será: ${nextDay.title || `Dia ${nextDayNumber}`} (${remainingThisWeek ? "Amanhã" : "Na próxima semana"}).`);
+      } else {
+        // Verificar se a semana foi completada
+        const newWeekCompleted = weekCompleted + 1;
+        if (newWeekCompleted >= target) {
+          // Ciclo completo — iniciar nova semana
+          setNextWorkoutInfo({
+            dayTitle: days[0]?.title || `Dia 1`,
+            timing: "Semana 1 de um novo ciclo!",
+          });
+          toast.success(`Treino do dia ${dayNumber} concluído! 🎉 Nova semana iniciada! Seu próximo treino será: ${days[0]?.title || "Dia 1"}.`);
+        } else {
+          // Ainda falta treinos para completar a semana
+          toast.success(`Treino do dia ${dayNumber} concluído! 🎉`);
+        }
+      }
+
+      // Limpar notificação após 8 segundos
+      setTimeout(() => setNextWorkoutInfo(null), 8000);
+
     } catch (err) {
       console.error("Erro ao registrar conclusão:", err);
       toast.error("Erro ao registrar conclusão do treino.");
     }
   };
 
-  // ── Tarefa 3: Marcar todos os exercícios como concluídos ───────────────────
-  const handleMarkAllAsDone = (dayNumber: number, exercises: any[]) => {
+  // ── Ajuste 1: Marcar todas as séries de um exercício ao tocar ─────────────
+  // O badge "{N} séries" agora atua como botão: ao tocar, marca todas as
+  // séries daquele exercício como concluídas.
+  const handleMarkAllSetsOfExercise = (dayNumber: number, exerciseIdx: number, totalSets: number) => {
     const newCompleted = { ...completedSets };
-    exercises.forEach((ex, exIdx) => {
-      for (let sIdx = 0; sIdx < ex.sets; sIdx++) {
-        newCompleted[`${dayNumber}-${exIdx}-${sIdx}`] = true;
-      }
-    });
+    for (let sIdx = 0; sIdx < totalSets; sIdx++) {
+      const key = `${dayNumber}-${exerciseIdx}-${sIdx}`;
+      newCompleted[key] = true;
+    }
     setCompletedSets(newCompleted);
-    toast.success("Todos os exercícios marcados como concluídos!");
+    toast.success("Todas as séries marcadas como concluídas!");
   };
 
   // ── Timer de descanso ──────────────────────────────────────────────────────
@@ -228,11 +267,14 @@ export default function Dashboard() {
       </div>
 
       <div className="px-5 space-y-5 pb-24">
-        {/* Weekly Progress Card */}
+        {/* ── Ajuste 2: Ciclo contínuo de semanas ────────────────────────── */}
+        {/* Weekly Progress Card — mostra semana atual e total de semanas concluídas */}
         <div className="bg-black rounded-[32px] p-6 text-white shadow-2xl relative overflow-hidden">
           <div className="relative z-10">
             <div className="flex items-center justify-between mb-4">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Progresso Semanal</span>
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                Semana {currentWeek} — Progresso
+              </span>
               <span className="text-orange-500 font-black text-xl">{Math.min(weekCompleted, target)}/{target}</span>
             </div>
             <div className="flex gap-2 mb-2">
@@ -241,13 +283,35 @@ export default function Dashboard() {
               ))}
             </div>
             <p className="text-[10px] text-white/40 font-medium">
-              {weekCompleted >= target ? "Meta da semana batida! 🎉" : `Faltam ${target - weekCompleted} treinos para bater sua meta!`}
+              {weekCompleted >= target
+                ? "Meta da semana batida! Nova semana iniciada. 🎉"
+                : `Faltam ${target - weekCompleted} treinos para bater sua meta!`}
             </p>
           </div>
           <div className="absolute -right-4 -bottom-4 opacity-10">
             <Activity size={120} />
           </div>
         </div>
+
+        {/* Next Workout Notification Banner */}
+        {nextWorkoutInfo && (
+          <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-[24px] p-5 text-white shadow-xl animate-in fade-in slide-in-from-top-4 duration-500">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shrink-0 mt-0.5">
+                <CheckCircle2 size={20} />
+              </div>
+              <div className="flex-1">
+                <p className="font-black text-sm">Treino de hoje concluído com sucesso!</p>
+                <p className="text-xs text-white/80 mt-1">
+                  Seu próximo treino será: <strong>{nextWorkoutInfo.dayTitle}</strong> ({nextWorkoutInfo.timing}).
+                </p>
+              </div>
+              <button onClick={() => setNextWorkoutInfo(null)} className="p-1.5 hover:bg-white/20 rounded-full transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Workout Content */}
         {workoutLoading ? (
@@ -311,21 +375,13 @@ export default function Dashboard() {
                       <h4 className="font-black text-gray-900 leading-tight text-lg">{day.title?.toUpperCase()}</h4>
                     </div>
                   </div>
-                  <div className={`w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center transition-transform ${selectedDay === day.dayNumber ? "rotate-90 bg-black text-white" : "text-gray-300"}`}>
-                    <ChevronRight size={18} />
+                  <div className={`w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center transition-transform ${selectedDay === day.dayNumber ? "rotate-90 bg-black" : ""}`}>
+                    <ChevronRight size={18} className={selectedDay === day.dayNumber ? "text-white" : "text-gray-400"} />
                   </div>
                 </div>
 
                 {selectedDay === day.dayNumber && (
                   <div className="mt-8 space-y-5 animate-in fade-in slide-in-from-top-4 duration-500">
-                    {/* Tarefa 3: Botão Marcar todos como concluídos */}
-                    <button
-                      onClick={() => handleMarkAllAsDone(day.dayNumber, day.exercises)}
-                      className="w-full py-3 bg-gray-100 text-gray-700 rounded-2xl text-xs font-bold uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-gray-200 transition-colors"
-                    >
-                      <CheckSquare size={16} />
-                      Marcar todos como concluídos
-                    </button>
 
                     {day.exercises.map((ex, idx) => (
                       <div key={idx} className="bg-gray-50 rounded-3xl p-5 border border-gray-100">
@@ -337,7 +393,13 @@ export default function Dashboard() {
                             </p>
                             {ex.notes && <p className="text-[11px] text-gray-500 mt-1 italic">{ex.notes}</p>}
                           </div>
-                          <span className="text-[10px] bg-black text-white px-3 py-1.5 rounded-full font-bold uppercase tracking-tighter shrink-0">{ex.sets} séries</span>
+                          {/* Ajuste 1: Badge de séries agora é clicável — marca todas as séries do exercício */}
+                          <button
+                            onClick={() => handleMarkAllSetsOfExercise(day.dayNumber, idx, ex.sets)}
+                            className="text-[10px] bg-black text-white px-3 py-1.5 rounded-full font-bold uppercase tracking-tighter shrink-0 hover:bg-gray-800 active:scale-95 transition-all cursor-pointer"
+                          >
+                            {ex.sets} séries
+                          </button>
                         </div>
                         <div className="flex flex-wrap gap-2">
                           {Array.from({ length: ex.sets }).map((_, sIdx) => {
