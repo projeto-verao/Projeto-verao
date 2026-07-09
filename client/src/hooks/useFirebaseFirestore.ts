@@ -65,7 +65,10 @@ export interface WorkoutCompletionEntry {
   day: number;
   completedExercises: number;
   totalExercises: number;
-  duration: number;
+  duration: number; // duração em segundos
+  startTime?: Timestamp;
+  endTime?: Timestamp;
+  workoutTitle?: string;
   createdAt: Timestamp;
 }
 
@@ -201,7 +204,16 @@ export const firestoreService = {
 
   async addWorkoutCompletion(
     userId: string,
-    completion: { workoutId: string; day: number; completedExercises: number; totalExercises: number; duration: number }
+    completion: { 
+      workoutId: string; 
+      day: number; 
+      completedExercises: number; 
+      totalExercises: number; 
+      duration: number;
+      startTime?: Timestamp;
+      endTime?: Timestamp;
+      workoutTitle?: string;
+    }
   ): Promise<string> {
     const docRef = await addDoc(userCol(userId, "completions"), {
       userId,

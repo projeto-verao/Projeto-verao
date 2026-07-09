@@ -5,9 +5,10 @@ import AppLayout from "@/components/AppLayout";
 import { geminiService } from "@/lib/gemini";
 import { firestoreService, StoredWorkout } from "@/hooks/useFirebaseFirestore";
 import {
-  Utensils, Target, RefreshCw, Loader2, ChevronRight, Timer, X, Sparkles, Activity, Trash2, CheckCircle2
+  Utensils, Target, RefreshCw, Loader2, ChevronRight, Timer, X, Sparkles, Activity, Trash2, CheckCircle2, Play, Trophy
 } from "lucide-react";
 import { toast } from "sonner";
+import { Timestamp } from "firebase/firestore";
 
 export default function Dashboard() {
   const { user, profile, isAuthenticated, loading: authLoading } = useAuth();
@@ -32,11 +33,23 @@ export default function Dashboard() {
   const [weekCompleted, setWeekCompleted] = useState(0);
   const [currentWeek, setCurrentWeek] = useState(1);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [nextWorkoutInfo, setNextWorkoutInfo] = useState<{ dayTitle: string; timing: string } | null>(null);
+  const [nextWorkoutInfo, setNextWorkoutInfo] = useState<{ dayTitle: string; timing: string; duration?: string } | null>(null);
+
+  // ── Estados do Cronômetro de Treino ────────────────────────────────────────
+  const [isTraining, setIsTraining] = useState(false);
+  const [workoutStartTime, setWorkoutStartTime] = useState<number | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const workoutTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const [completionSummary, setCompletionSummary] = useState<{
+    duration: string;
+    nextWorkout: string;
+    nextTiming: string;
+  } | null>(null);
 
   const target = profile?.daysPerWeek || 4;
 
-  // ── Carregar treino ativo e progresso semanal do Firestore ────────────────
+  // ── Carregar treino ativo e persistência do cronômetro ─────────────────────
   const loadData = useCallback(async () => {
     if (!user) return;
     setWorkoutLoading(true);
@@ -47,6 +60,19 @@ export default function Dashboard() {
       ]);
       setActiveWorkout(workout);
       setWeekCompleted(completions.length);
+
+      // Recuperar estado do cronômetro do localStorage
+      const savedStartTime = localStorage.getItem(`workout_start_${user.uid}`);
+      const savedIsTraining = localStorage.getItem(`workout_active_${user.uid}`);
+      const savedSelectedDay = localStorage.getItem(`workout_day_${user.uid}`);
+
+      if (savedIsTraining === "true" && savedStartTime) {
+        const start = parseInt(savedStartTime);
+        setWorkoutStartTime(start);
+        setIsTraining(true);
+        setElapsedSeconds(Math.floor((Date.now() - start) / 1000));
+        if (savedSelectedDay) setSelectedDay(parseInt(savedSelectedDay));
+      }
     } catch (err) {
       console.error("Erro ao carregar dados:", err);
     } finally {
@@ -58,7 +84,43 @@ export default function Dashboard() {
     if (user) loadData();
   }, [user, loadData]);
 
-  // ── Gerar treino com IA (Gemini direto) ────────────────────────────────────
+  // Efeito para atualizar o cronômetro em tempo real
+  useEffect(() => {
+    if (isTraining && workoutStartTime) {
+      workoutTimerRef.current = setInterval(() => {
+        setElapsedSeconds(Math.floor((Date.now() - workoutStartTime) / 1000));
+      }, 1000);
+    } else {
+      if (workoutTimerRef.current) clearInterval(workoutTimerRef.current);
+    }
+    return () => { if (workoutTimerRef.current) clearInterval(workoutTimerRef.current); };
+  }, [isTraining, workoutStartTime]);
+
+  const formatDuration = (totalSeconds: number) => {
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    if (minutes === 0) return `${seconds} segundos`;
+    return `${minutes} minutos e ${seconds.toString().padStart(2, '0')} segundos`;
+  };
+
+  // ── Iniciar Treino ─────────────────────────────────────────────────────────
+  const handleStartWorkout = (dayNumber: number) => {
+    if (!user) return;
+    const now = Date.now();
+    setIsTraining(true);
+    setWorkoutStartTime(now);
+    setElapsedSeconds(0);
+    setSelectedDay(dayNumber);
+
+    // Persistir no localStorage
+    localStorage.setItem(`workout_active_${user.uid}`, "true");
+    localStorage.setItem(`workout_start_${user.uid}`, now.toString());
+    localStorage.setItem(`workout_day_${user.uid}`, dayNumber.toString());
+
+    toast.success("Treino iniciado! O cronômetro está rodando.");
+  };
+
+  // ── Gerar treino com IA ────────────────────────────────────────────────────
   const handleGenerateWorkout = async () => {
     if (!user) return;
     if (!profile?.goal) {
@@ -106,15 +168,31 @@ export default function Dashboard() {
 
   // ── Concluir dia de treino ─────────────────────────────────────────────────
   const handleCompleteDay = async (dayNumber: number, totalExercises: number) => {
-    if (!user || !activeWorkout) return;
+    if (!user || !activeWorkout || !workoutStartTime) return;
+    
+    const endTime = Date.now();
+    const durationSeconds = Math.floor((endTime - workoutStartTime) / 1000);
+    const durationText = formatDuration(durationSeconds);
+
     try {
       await firestoreService.addWorkoutCompletion(user.uid, {
         workoutId: activeWorkout.id,
         day: dayNumber,
         completedExercises: totalExercises,
         totalExercises,
-        duration: profile?.minutesPerSession || 60,
+        duration: durationSeconds,
+        startTime: Timestamp.fromMillis(workoutStartTime),
+        endTime: Timestamp.fromMillis(endTime),
+        workoutTitle: activeWorkout.days.find(d => d.dayNumber === dayNumber)?.title || "Treino"
       });
+
+      // Limpar estado do cronômetro
+      setIsTraining(false);
+      setWorkoutStartTime(null);
+      setElapsedSeconds(0);
+      localStorage.removeItem(`workout_active_${user.uid}`);
+      localStorage.removeItem(`workout_start_${user.uid}`);
+      localStorage.removeItem(`workout_day_${user.uid}`);
 
       // Fechar automaticamente a tela do treino e limpar estado
       setSelectedDay(null);
@@ -123,41 +201,29 @@ export default function Dashboard() {
 
       await loadData();
 
-      // ── Ajuste 3: Informar o próximo treino ──────────────────────────────
-      // Identificar qual é o próximo dia de treino
+      // Identificar próximo treino
       const days = activeWorkout.days || [];
       const nextDayIndex = days.findIndex(d => d.dayNumber > dayNumber);
       const hasMoreDaysThisWeek = nextDayIndex !== -1;
+      
+      let nextTitle = "";
+      let nextTiming = "";
 
       if (hasMoreDaysThisWeek) {
         const nextDay = days[nextDayIndex];
-        const nextDayNumber = nextDay.dayNumber;
-        const remainingThisWeek = weekCompleted + 1 < target;
-
-        setNextWorkoutInfo({
-          dayTitle: nextDay.title || `Treino do dia ${nextDayNumber}`,
-          timing: remainingThisWeek ? "Amanhã" : "Na próxima semana",
-        });
-
-        toast.success(`Treino do dia ${dayNumber} concluído! 🎉 Seu próximo treino será: ${nextDay.title || `Dia ${nextDayNumber}`} (${remainingThisWeek ? "Amanhã" : "Na próxima semana"}).`);
+        nextTitle = nextDay.title || `Treino do dia ${nextDay.dayNumber}`;
+        nextTiming = (weekCompleted + 1 < target) ? "Amanhã" : "Na próxima semana";
       } else {
-        // Verificar se a semana foi completada
-        const newWeekCompleted = weekCompleted + 1;
-        if (newWeekCompleted >= target) {
-          // Ciclo completo — iniciar nova semana
-          setNextWorkoutInfo({
-            dayTitle: days[0]?.title || `Dia 1`,
-            timing: "Semana 1 de um novo ciclo!",
-          });
-          toast.success(`Treino do dia ${dayNumber} concluído! 🎉 Nova semana iniciada! Seu próximo treino será: ${days[0]?.title || "Dia 1"}.`);
-        } else {
-          // Ainda falta treinos para completar a semana
-          toast.success(`Treino do dia ${dayNumber} concluído! 🎉`);
-        }
+        nextTitle = days[0]?.title || "Dia 1";
+        nextTiming = "Início de um novo ciclo!";
       }
 
-      // Limpar notificação após 8 segundos
-      setTimeout(() => setNextWorkoutInfo(null), 8000);
+      setCompletionSummary({
+        duration: durationText,
+        nextWorkout: nextTitle,
+        nextTiming: nextTiming
+      });
+      setShowCompletionModal(true);
 
     } catch (err) {
       console.error("Erro ao registrar conclusão:", err);
@@ -165,9 +231,6 @@ export default function Dashboard() {
     }
   };
 
-  // ── Ajuste 1: Marcar todas as séries de um exercício ao tocar ─────────────
-  // O badge "{N} séries" agora atua como botão: ao tocar, marca todas as
-  // séries daquele exercício como concluídas.
   const handleMarkAllSetsOfExercise = (dayNumber: number, exerciseIdx: number, totalSets: number) => {
     const newCompleted = { ...completedSets };
     for (let sIdx = 0; sIdx < totalSets; sIdx++) {
@@ -234,6 +297,67 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Workout Timer Floating Bar */}
+      {isTraining && !selectedDay && (
+        <div className="fixed inset-x-0 bottom-24 z-[90] px-5 animate-in slide-in-from-bottom-4 duration-300">
+          <div className="bg-orange-500 text-white rounded-2xl p-4 shadow-xl flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Activity size={20} className="animate-pulse" />
+              <div>
+                <p className="text-[10px] font-bold uppercase">Treino em Andamento</p>
+                <p className="text-lg font-mono font-bold">
+                  {Math.floor(elapsedSeconds / 3600).toString().padStart(2, '0')}:
+                  {Math.floor((elapsedSeconds % 3600) / 60).toString().padStart(2, '0')}:
+                  {(elapsedSeconds % 60).toString().padStart(2, '0')}
+                </p>
+              </div>
+            </div>
+            <button 
+              onClick={() => {
+                const savedDay = localStorage.getItem(`workout_day_${user?.uid}`);
+                if (savedDay) setSelectedDay(parseInt(savedDay));
+              }}
+              className="bg-white text-orange-500 px-4 py-2 rounded-xl text-xs font-bold uppercase"
+            >
+              Voltar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Completion Modal */}
+      {showCompletionModal && completionSummary && (
+        <div className="fixed inset-0 z-[120] bg-black/80 flex items-center justify-center p-6 backdrop-blur-sm">
+          <div className="bg-white rounded-[40px] p-8 w-full max-w-sm text-center animate-in zoom-in-95 duration-300">
+            <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Trophy size={48} className="text-green-500" />
+            </div>
+            <h3 className="font-black text-gray-900 text-2xl mb-2">🎉 PARABÉNS!</h3>
+            <p className="text-gray-600 mb-6 leading-relaxed">
+              Você concluiu o treino de hoje!<br/>
+              <span className="font-bold text-gray-900">Tempo total: {completionSummary.duration}.</span>
+            </p>
+            
+            <div className="bg-gray-50 rounded-3xl p-5 mb-8 text-left border border-gray-100">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Próximo Desafio</p>
+              <p className="font-black text-gray-900">{completionSummary.nextWorkout}</p>
+              <p className="text-xs text-green-600 font-bold">{completionSummary.nextTiming}</p>
+            </div>
+
+            <p className="text-sm text-gray-500 mb-8 italic">
+              "Continue assim! Cada treino concluído é um passo a mais em direção ao seu objetivo."
+            </p>
+
+            <button 
+              onClick={() => setShowCompletionModal(false)}
+              className="w-full py-5 rounded-[24px] font-black bg-black text-white shadow-xl active:scale-95 transition-all"
+            >
+              VAMOS NESSA!
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Confirm Delete Modal */}
       {confirmDelete && (
         <div className="fixed inset-0 z-[110] bg-black/50 flex items-center justify-center p-6" onClick={() => setConfirmDelete(false)}>
@@ -267,8 +391,7 @@ export default function Dashboard() {
       </div>
 
       <div className="px-5 space-y-5 pb-24">
-        {/* ── Ajuste 2: Ciclo contínuo de semanas ────────────────────────── */}
-        {/* Weekly Progress Card — mostra semana atual e total de semanas concluídas */}
+        {/* Weekly Progress Card */}
         <div className="bg-black rounded-[32px] p-6 text-white shadow-2xl relative overflow-hidden">
           <div className="relative z-10">
             <div className="flex items-center justify-between mb-4">
@@ -293,26 +416,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Next Workout Notification Banner */}
-        {nextWorkoutInfo && (
-          <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-[24px] p-5 text-white shadow-xl animate-in fade-in slide-in-from-top-4 duration-500">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shrink-0 mt-0.5">
-                <CheckCircle2 size={20} />
-              </div>
-              <div className="flex-1">
-                <p className="font-black text-sm">Treino de hoje concluído com sucesso!</p>
-                <p className="text-xs text-white/80 mt-1">
-                  Seu próximo treino será: <strong>{nextWorkoutInfo.dayTitle}</strong> ({nextWorkoutInfo.timing}).
-                </p>
-              </div>
-              <button onClick={() => setNextWorkoutInfo(null)} className="p-1.5 hover:bg-white/20 rounded-full transition-colors">
-                <X size={16} />
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* Workout Content */}
         {workoutLoading ? (
           <div className="flex flex-col items-center justify-center py-20 bg-white rounded-[32px] border border-gray-100">
@@ -322,7 +425,7 @@ export default function Dashboard() {
         ) : days.length === 0 ? (
           <div className="bg-white rounded-[32px] p-10 flex flex-col items-center text-center border border-gray-100 shadow-sm">
             <div className="w-20 h-20 bg-gray-50 rounded-[28px] flex items-center justify-center mb-6">
-              <Sparkles size={40} className="text-orange-300" />
+              <Sparkles className="text-gray-200" size={32} />
             </div>
             <h3 className="font-black text-gray-900 text-lg">VAMOS COMEÇAR?</h3>
             <p className="text-sm text-gray-500 mt-2 max-w-[240px]">Sua IA ainda não gerou seu treino personalizado baseado no seu perfil.</p>
@@ -382,6 +485,34 @@ export default function Dashboard() {
 
                 {selectedDay === day.dayNumber && (
                   <div className="mt-8 space-y-5 animate-in fade-in slide-in-from-top-4 duration-500">
+                    
+                    {/* Botão de Iniciar Treino (Cronômetro) */}
+                    {!isTraining && (
+                      <button
+                        onClick={() => handleStartWorkout(day.dayNumber)}
+                        className="w-full bg-black text-white py-4 rounded-3xl font-bold shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 mb-4"
+                      >
+                        <Play size={18} fill="white" />
+                        INICIAR TREINO AGORA
+                      </button>
+                    )}
+
+                    {/* Cronômetro Ativo na tela do treino */}
+                    {isTraining && (
+                      <div className="bg-orange-50 rounded-3xl p-5 border border-orange-100 flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <Timer size={20} className="text-orange-500 animate-pulse" />
+                          <div>
+                            <p className="text-[10px] font-bold text-orange-400 uppercase tracking-widest">Tempo de Treino</p>
+                            <p className="text-xl font-mono font-bold text-orange-600">
+                              {Math.floor(elapsedSeconds / 3600).toString().padStart(2, '0')}:
+                              {Math.floor((elapsedSeconds % 3600) / 60).toString().padStart(2, '0')}:
+                              {(elapsedSeconds % 60).toString().padStart(2, '0')}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {day.exercises.map((ex, idx) => (
                       <div key={idx} className="bg-gray-50 rounded-3xl p-5 border border-gray-100">
@@ -393,7 +524,6 @@ export default function Dashboard() {
                             </p>
                             {ex.notes && <p className="text-[11px] text-gray-500 mt-1 italic">{ex.notes}</p>}
                           </div>
-                          {/* Ajuste 1: Badge de séries agora é clicável — marca todas as séries do exercício */}
                           <button
                             onClick={() => handleMarkAllSetsOfExercise(day.dayNumber, idx, ex.sets)}
                             className="text-[10px] bg-black text-white px-3 py-1.5 rounded-full font-bold uppercase tracking-tighter shrink-0 hover:bg-gray-800 active:scale-95 transition-all cursor-pointer"
@@ -421,13 +551,15 @@ export default function Dashboard() {
                     ))}
 
                     {/* Botão de concluir treino do dia */}
-                    <button
-                      onClick={() => handleCompleteDay(day.dayNumber, day.exercises.length)}
-                      className="w-full bg-green-500 text-white py-4 rounded-3xl font-bold shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
-                    >
-                      <CheckCircle2 size={18} />
-                      CONCLUIR TREINO DO DIA {day.dayNumber}
-                    </button>
+                    {isTraining && (
+                      <button
+                        onClick={() => handleCompleteDay(day.dayNumber, day.exercises.length)}
+                        className="w-full bg-green-500 text-white py-4 rounded-3xl font-bold shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
+                      >
+                        <CheckCircle2 size={18} />
+                        CONCLUIR TREINO DO DIA {day.dayNumber}
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
