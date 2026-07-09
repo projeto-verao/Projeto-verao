@@ -275,7 +275,7 @@ export default function IATrainer() {
   };
 
   return (
-    <AppLayout title="Coach IA">
+    <AppLayout>
       <div className="flex flex-col h-[calc(100vh-12rem)]">
         {/* Tabs */}
         <div className="flex bg-gray-100 p-1 rounded-xl mb-4">
