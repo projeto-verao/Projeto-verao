@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import AppLayout from "@/components/AppLayout";
 import { firestoreService, BodyProgressEntry } from "@/hooks/useFirebaseFirestore";
-import { ArrowLeft, Loader2, TrendingUp, Scale, Percent, Ruler, Calendar, ArrowRight } from "lucide-react";
+import { ArrowLeft, Loader2, TrendingUp, Scale, Percent, Calendar, ArrowRight } from "lucide-react";
 import { useLocation } from "wouter";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -54,7 +54,7 @@ export default function History() {
   const bfDiff = latest && oldest && latest.bodyFatPercent && oldest.bodyFatPercent ? (latest.bodyFatPercent - oldest.bodyFatPercent).toFixed(1) : null;
 
   return (
-    <AppLayout title="Evolução">
+    <AppLayout>
       {/* Header */}
       <div className="px-5 pt-6 pb-2">
         <div className="flex items-center gap-3">
