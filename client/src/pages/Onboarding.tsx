@@ -144,12 +144,13 @@ export default function Onboarding() {
   const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
   const [evalPhoto, setEvalPhoto] = useState<string | null>(null);
 
+  // Tarefa 4: Campos sem valores padrão, apenas placeholders
   const [form, setForm] = useState({
     name: "",
-    age: "25",
+    age: "",
     gender: "Masculino",
-    heightCm: "175",
-    weightKg: "75",
+    heightCm: "",
+    weightKg: "",
     targetWeightKg: "",
     goal: "Hipertrofia",
     experience: "Iniciante",
@@ -171,6 +172,13 @@ export default function Onboarding() {
   }, [isAuthenticated, loading, navigate, profile]);
 
   const handleSubmit = async () => {
+    // Validação básica dos campos obrigatórios
+    if (!form.name || !form.age || !form.heightCm || !form.weightKg) {
+      toast.error("Por favor, preencha todos os dados básicos.");
+      setStep(1);
+      return;
+    }
+
     setIsSubmitting(true);
     const toastId = toast.loading("Salvando suas informações...");
 
@@ -184,7 +192,6 @@ export default function Onboarding() {
           evalPhotoUrl = await storage.uploadFromDataUrl(evalPhoto, uploadPath);
         } catch (uploadError) {
           console.warn("Erro ao fazer upload da foto de avaliação:", uploadError);
-          // Continua sem a foto se o upload falhar
         }
       }
 
@@ -235,7 +242,6 @@ export default function Onboarding() {
               <p className="text-gray-500 text-sm">Precisamos dessas informações para sua IA.</p>
             </div>
 
-            {/* Foto de Perfil */}
             <PhotoSection
               title="Foto de Perfil"
               description="Esta foto será utilizada apenas como sua imagem de perfil dentro do aplicativo."
@@ -261,7 +267,7 @@ export default function Onboarding() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Idade</label>
-                  <input type="number" className="w-full bg-gray-50 border-none rounded-2xl p-4" value={form.age} onChange={e => setForm({...form, age: e.target.value})} />
+                  <input type="number" placeholder="Ex: 25" className="w-full bg-gray-50 border-none rounded-2xl p-4" value={form.age} onChange={e => setForm({...form, age: e.target.value})} />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Sexo</label>
@@ -274,11 +280,11 @@ export default function Onboarding() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Altura (cm)</label>
-                  <input type="number" className="w-full bg-gray-50 border-none rounded-2xl p-4" value={form.heightCm} onChange={e => setForm({...form, heightCm: e.target.value})} />
+                  <input type="number" placeholder="Ex: 175" className="w-full bg-gray-50 border-none rounded-2xl p-4" value={form.heightCm} onChange={e => setForm({...form, heightCm: e.target.value})} />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Peso (kg)</label>
-                  <input type="number" className="w-full bg-gray-50 border-none rounded-2xl p-4" value={form.weightKg} onChange={e => setForm({...form, weightKg: e.target.value})} />
+                  <input type="number" placeholder="Ex: 75.5" className="w-full bg-gray-50 border-none rounded-2xl p-4" value={form.weightKg} onChange={e => setForm({...form, weightKg: e.target.value})} />
                 </div>
               </div>
             </div>
@@ -334,26 +340,11 @@ export default function Onboarding() {
                   </select>
                 </div>
               </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Dores ou limitações</label>
-                <input className="w-full bg-gray-50 border-none rounded-2xl p-4" placeholder="Ex: dor no joelho, hérnia..." value={form.restrictions} onChange={e => setForm({...form, restrictions: e.target.value})} />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Exercícios que gosta</label>
-                <input className="w-full bg-gray-50 border-none rounded-2xl p-4" placeholder="Ex: agachamento, supino..." value={form.likes} onChange={e => setForm({...form, likes: e.target.value})} />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Exercícios que evita</label>
-                <input className="w-full bg-gray-50 border-none rounded-2xl p-4" placeholder="Ex: burpee, corrida..." value={form.dislikes} onChange={e => setForm({...form, dislikes: e.target.value})} />
-              </div>
             </div>
 
-            <div className="flex gap-4">
-              <button className="flex-1 bg-gray-200 text-gray-600 py-5 rounded-3xl font-bold" onClick={() => { setStep(1); window.scrollTo(0, 0); }}>VOLTAR</button>
-              <button className="flex-[2] bg-black text-white py-5 rounded-3xl font-bold shadow-xl flex items-center justify-center gap-2" onClick={() => { setStep(3); window.scrollTo(0, 0); }}>
+            <div className="flex gap-3">
+              <button className="flex-1 bg-gray-100 text-gray-700 py-5 rounded-3xl font-bold" onClick={() => setStep(1)}>VOLTAR</button>
+              <button className="flex-2 bg-black text-white py-5 px-10 rounded-3xl font-bold shadow-xl flex items-center justify-center gap-2" onClick={() => { setStep(3); window.scrollTo(0, 0); }}>
                 PRÓXIMO PASSO <ChevronRight size={18} />
               </button>
             </div>
@@ -363,14 +354,13 @@ export default function Onboarding() {
         {step === 3 && (
           <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
             <div className="space-y-2">
-              <h1 className="text-3xl font-black text-gray-900 tracking-tight">AVALIAÇÃO FÍSICA</h1>
-              <p className="text-gray-500 text-sm">Última etapa antes da IA criar seu treino.</p>
+              <h1 className="text-3xl font-black text-gray-900 tracking-tight">AVALIAÇÃO</h1>
+              <p className="text-gray-500 text-sm">Quase lá! Vamos para a análise visual.</p>
             </div>
 
-            {/* Foto para Avaliação Física */}
             <PhotoSection
               title="Foto para Avaliação Física"
-              description="Envie uma foto de corpo inteiro, de frente, em um ambiente bem iluminado. Essa imagem será utilizada exclusivamente pela IA para analisar sua composição corporal e criar um treino personalizado com base na sua estrutura física e nas informações preenchidas neste cadastro."
+              description="Envie uma foto de corpo inteiro, de frente, em um ambiente bem iluminado. Essa imagem será utilizada exclusivamente pela IA para analisar sua composição corporal."
               photo={evalPhoto}
               onPhoto={setEvalPhoto}
               onClear={() => setEvalPhoto(null)}
@@ -378,14 +368,30 @@ export default function Onboarding() {
               inputIdPrefix="eval-photo"
             />
 
-            <p className="text-[11px] text-gray-400 text-center px-4">
-              A foto é opcional, mas melhora muito a personalização do seu treino. Você também poderá enviá-la depois.
-            </p>
+            <div className="bg-white rounded-3xl p-6 shadow-sm space-y-6">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Dores ou limitações</label>
+                <textarea className="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm" placeholder="Ex: Dor no joelho direito, hérnia de disco..." rows={3} value={form.restrictions} onChange={e => setForm({...form, restrictions: e.target.value})} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Preferências de exercícios</label>
+                <textarea className="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm" placeholder="Ex: Gosto de agachamento, prefiro treinar com halteres..." rows={3} value={form.likes} onChange={e => setForm({...form, likes: e.target.value})} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Exercícios a evitar</label>
+                <textarea className="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm" placeholder="Ex: Não gosto de burpee, evito corrida..." rows={3} value={form.dislikes} onChange={e => setForm({...form, dislikes: e.target.value})} />
+              </div>
+            </div>
 
-            <div className="flex gap-4">
-              <button className="flex-1 bg-gray-200 text-gray-600 py-5 rounded-3xl font-bold" onClick={() => { setStep(2); window.scrollTo(0, 0); }}>VOLTAR</button>
-              <button className="flex-[2] bg-black text-white py-5 rounded-3xl font-bold shadow-xl flex items-center justify-center gap-2" onClick={handleSubmit} disabled={isSubmitting}>
-                {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : "FINALIZAR CADASTRO"}
+            <div className="flex gap-3">
+              <button className="flex-1 bg-gray-100 text-gray-700 py-5 rounded-3xl font-bold disabled:opacity-50" disabled={isSubmitting} onClick={() => setStep(2)}>VOLTAR</button>
+              <button
+                className="flex-2 bg-black text-white py-5 px-10 rounded-3xl font-bold shadow-xl flex items-center justify-center gap-2 disabled:opacity-50"
+                disabled={isSubmitting}
+                onClick={handleSubmit}
+              >
+                {isSubmitting ? <Loader2 size={20} className="animate-spin" /> : <CheckCircle2 size={18} />}
+                {isSubmitting ? "SALVANDO..." : "FINALIZAR"}
               </button>
             </div>
           </div>
