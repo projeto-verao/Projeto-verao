@@ -8,6 +8,8 @@ import { Dumbbell, Mail, Lock, User, ArrowLeft } from "lucide-react";
 
 type Tab = "login" | "signup" | "reset";
 
+const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
 export default function Login() {
   const [, navigate] = useLocation();
   const { login, register, resetPassword, loading, isAuthenticated } = useAuth();
@@ -29,6 +31,10 @@ export default function Login() {
       toast.error("Preencha e-mail e senha");
       return;
     }
+    if (!isValidEmail(email)) {
+      toast.error("E-mail inválido");
+      return;
+    }
     try {
       await login(email, password);
       toast.success("Login realizado com sucesso!");
@@ -47,6 +53,10 @@ export default function Login() {
     }
     if (!email) {
       toast.error("Digite seu e-mail");
+      return;
+    }
+    if (!isValidEmail(email)) {
+      toast.error("E-mail inválido");
       return;
     }
     if (password.length < 6) {
@@ -72,6 +82,10 @@ export default function Login() {
     e.preventDefault();
     if (!email) {
       toast.error("Digite seu e-mail para recuperar a senha");
+      return;
+    }
+    if (!isValidEmail(email)) {
+      toast.error("E-mail inválido");
       return;
     }
     try {

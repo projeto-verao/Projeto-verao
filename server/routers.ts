@@ -405,7 +405,7 @@ Regras:
       .input(z.object({ versionId: z.number() }))
       .mutation(async ({ ctx, input }) => {
         const versions = await getWorkoutVersions(ctx.user.id);
-        const version = versions.find(v => v.id === input.versionId);
+        const version = versions.find((v: any) => v.id === input.versionId);
         if (!version) throw new Error("Versão não encontrada");
 
         const workout = await createWorkout({
@@ -476,7 +476,7 @@ Estrutura do JSON:
 Se NÃO houver pedido de mudança no treino, responda normalmente sem a tag.
 Responda sempre em português do Brasil.`;
 
-        const chatMessages = history.reverse().map(m => ({
+        const chatMessages = history.reverse().map((m: any) => ({
           role: m.role as "user" | "assistant",
           content: m.content,
         }));
@@ -674,14 +674,15 @@ Seja específico e prático. Responda em português.`;
         armCm: z.number().optional(),
         thighCm: z.number().optional(),
         notes: z.string().optional(),
+        photoUrl: z.string().optional(),
         photoBase64: z.string().optional(),
         photoMime: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        let photoUrl: string | undefined;
+        let photoUrl: string | undefined = input.photoUrl;
         let photoKey: string | undefined;
 
-        if (input.photoBase64) {
+        if (!photoUrl && input.photoBase64) {
           const buffer = Buffer.from(input.photoBase64, "base64");
           const key = `progress/${ctx.user.id}/photo-${Date.now()}.jpg`;
           const stored = await storagePut(key, buffer, input.photoMime || "image/jpeg");
