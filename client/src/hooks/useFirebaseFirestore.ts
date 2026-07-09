@@ -12,6 +12,7 @@ import {
   orderBy,
   limit as fsLimit,
   Timestamp,
+  writeBatch,
 } from "firebase/firestore";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -435,9 +436,55 @@ export const firestoreService = {
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ReminderConfig));
   },
 
+  async saveAllReminders(userId: string, configs: ReminderConfig[]) {
+    const batch = writeBatch(db);
+    configs.forEach(config => {
+      const docRef = doc(db, "users", userId, "reminders", config.id);
+      console.log("Firestore: saveAllReminders - Batching config for ID:", config.id, "Data:", config);
+      batch.set(docRef, config, { merge: true });
+    });
+    try {
+      await batch.commit();
+      console.log("Firestore: saveAllReminders - Batch commit successful.");
+    } catch (e: any) {
+      console.error("Firestore: saveAllReminders - Error during batch commit:", e.code, e.message, e);
+      throw e; // Re-throw the error to be caught by the calling function
+    }
+  },
+
+  async updateReminderConfig(userId: string, config: Partial<ReminderConfig> & { id: string }) {
+    console.log("Firestore: updateReminderConfig - User ID:", userId, "Config:", config);
+    const docRef = doc(db, "users", userId, "reminders", config.id);
+    try {
+      await setDoc(docRef, config, { merge: true });
+      console.log("Firestore: updateReminderConfig - Success for ID:", config.id);
+    } catch (e: any) {
+      console.error("Firestore: updateReminderConfig - Error for ID:", config.id, "Error:", e.code, e.message, e);
+      throw e; // Re-throw the error to be caught by the calling function
+    }
+  },
+
   async updateReminderConfig(userId: string, config: Partial<ReminderConfig> & { id: string }) {
     const docRef = doc(db, "users", userId, "reminders", config.id);
-    await setDoc(docRef, config, { merge: true });
+    try {
+      await setDoc(docRef, config, { merge: true });
+      console.log("Firestore: updateReminderConfig - Success for ID:", config.id);
+    } catch (e: any) {
+      console.error("Firestore: updateReminderConfig - Error for ID:", config.id, "Error:", e.code, e.message, e);
+      throw e; // Re-throw the error to be caught by the calling function
+    }
+  },
+
+  async updateReminderConfig(userId: string, config: Partial<ReminderConfig> & { id: string }) {
+
+    const docRef = doc(db, "users", userId, "reminders", config.id);
+    try {
+      await setDoc(docRef, config, { merge: true });
+
+    } catch (e: any) {
+
+      throw e; // Re-throw the error to be caught by the calling function
+    }
   },
 
   async saveAllReminders(userId: string, configs: ReminderConfig[]) {
@@ -449,6 +496,12 @@ export const firestoreService = {
       const docRef = doc(db, "users", userId, "reminders", config.id);
       batch.set(docRef, config);
     });
-    await batch.commit();
+    try {
+      await batch.commit();
+      console.log("Firestore: saveAllReminders - Batch commit successful.");
+    } catch (e: any) {
+      console.error("Firestore: saveAllReminders - Error during batch commit:", e.code, e.message, e);
+      throw e; // Re-throw the error to be caught by the calling function
+    }
   }
 };

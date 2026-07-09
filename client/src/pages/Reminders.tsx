@@ -61,7 +61,17 @@ export default function Reminders() {
   const [loading, setLoading] = useState(true);
   const [selectedReminder, setSelectedReminder] = useState<ReminderConfig | null>(null);
   const [isConfiguring, setIsConfiguring] = useState(false);
-  const [selectedProfile, setSelectedProfile] = useState<'none' | 'basic' | 'fitness'>('none');
+  const [selectedProfile, setSelectedProfile] = useState<'all' | 'basic' | 'fitness'>('all');
+
+  const basicRemindersIds = ['water', 'food_log', 'training_remind'];
+  const fitnessRemindersIds = ['water', 'food_log', 'protein', 'calories', 'training_remind', 'weight', 'evolution_photo'];
+
+  const filteredReminders = reminders.filter(reminder => {
+    if (selectedProfile === 'all') return true;
+    if (selectedProfile === 'basic') return basicRemindersIds.includes(reminder.id);
+    if (selectedProfile === 'fitness') return fitnessRemindersIds.includes(reminder.id);
+    return true;
+  });
 
   useEffect(() => {
     if (user) {
@@ -69,11 +79,11 @@ export default function Reminders() {
     }
   }, [user]);
 
-  useEffect(() => {
-    if (selectedProfile !== 'none' && user) {
-      applyPreset(selectedProfile);
-    }
-  }, [selectedProfile, user]);
+  // useEffect(() => {
+  //   if (selectedProfile !== 'none' && user) {
+  //     applyPreset(selectedProfile);
+  //   }
+  // }, [selectedProfile, user]); // Removed: applyPreset is now called explicitly by buttons, not on profile change
 
   // ── Inteligência de Lembretes ───────────────────────────────────────────
   const [smartStatus, setSmartStatus] = useState<Record<string, boolean>>({});
@@ -204,6 +214,7 @@ export default function Reminders() {
   };
 
   const toggleReminder = async (id: string) => {
+    console.log("toggleReminder called for ID:", id);
     const reminder = reminders.find(r => r.id === id);
     if (!reminder) return;
 
@@ -214,13 +225,23 @@ export default function Reminders() {
     setReminders(updatedReminders);
 
     try {
-      if (!user) return;
+      if (!user) {
+        toast.error("Usuário não autenticado.");
+        setReminders(reminders); // Rollback
+        return;
+      }
       // Pass the full updated reminder object to ensure all fields are saved correctly
       await firestoreService.updateReminderConfig(user.uid, updatedReminders.find(r => r.id === id)!);
       toast.success(`${reminder.title} ${newStatus ? 'ativado' : 'desativado'}`);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro ao atualizar lembrete:", id, error);
-      toast.error(`Erro ao salvar alteração para ${reminder.title}: ${error.message || error}`);
+      let errorMessage = "Erro desconhecido ao salvar.";
+      if (error.code === 'permission-denied') {
+        errorMessage = "Permissão negada. Verifique as regras do Firestore.";
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      toast.error(`Erro ao salvar alteração para ${reminder.title}: ${errorMessage}`);
       // Rollback
       setReminders(reminders);
     }
@@ -488,105 +509,79 @@ export default function Reminders() {
         </header>
 
         {/* Quick Config */}
-        <div className="mb-8">
-          <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4 px-1 flex items-center gap-2">
-            <Zap size={14} className="text-amber-500" /> Configuração Rápida
-          </h2>
-          <div className="grid grid-cols-2 gap-3">
-            <button 
-              onClick={() => setSelectedProfile('basic')}
-              className={`app-card flex flex-col items-center gap-2 hover:border-black transition-all group ${selectedProfile === 'basic' ? 'border-black' : ''}`}
-            >
-              <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                <Activity size={20} />
-              </div>
-              <span className="font-bold text-sm">Básico</span>
-              <span className="text-[10px] text-gray-400 text-center">Água, Alimentação e Treino</span>
-            </button>
-            <button 
-              onClick={() => setSelectedProfile('fitness')}
-              className={`app-card flex flex-col items-center gap-2 hover:border-black transition-all group ${selectedProfile === 'fitness' ? 'border-black' : ''}`}
-            >
-              <div className="w-10 h-10 rounded-full bg-orange-50 text-orange-600 flex items-center justify-center group-hover:bg-orange-100 transition-colors">
-                <Flame size={20} />
-              </div>
-              <span className="font-bold text-sm">Fitness</span>
-              <span className="text-[10px] text-gray-400 text-center">Tudo para performance</span>
-            </button>
-            <button 
-              onClick={() => setSelectedProfile('none')}
-              className={`app-card flex flex-col items-center gap-2 hover:border-black transition-all group ${selectedProfile === 'none' ? 'border-black' : ''}`}
-            >
-              <div className="w-10 h-10 rounded-full bg-gray-50 text-gray-600 flex items-center justify-center group-hover:bg-gray-100 transition-colors">
-                <Bell size={20} />
-              </div>
-              <span className="font-bold text-sm">Todos</span>
-              <span className="text-[10px] text-gray-400 text-center">Ver todos os lembretes</span>
-            </button>
-          </div>
+        <div className="flex flex-wrap gap-2 mb-6">
+          <button 
+            onClick={() => setSelectedProfile("basic")}
+            className={`app-card flex-1 p-4 flex flex-col items-center justify-center space-y-2 text-center ${selectedProfile === "basic" ? "border-2 border-black" : ""}`}
+          >
+            <Zap size={20} />
+            <span className="font-semibold">Básico</span>
+            <p className="text-xs text-gray-500">Água, Alimentação e Treino</p>
+          </button>
+          <button 
+            onClick={() => setSelectedProfile("fitness")}
+            className={`app-card flex-1 p-4 flex flex-col items-center justify-center space-y-2 text-center ${selectedProfile === "fitness" ? "border-2 border-black" : ""}`}
+          >
+            <Sparkles size={20} />
+            <span className="font-semibold">Fitness</span>
+            <p className="text-xs text-gray-500">Tudo para performance</p>
+          </button>
+          <button 
+            onClick={() => setSelectedProfile("all")}
+            className={`app-card flex-1 p-4 flex flex-col items-center justify-center space-y-2 text-center ${selectedProfile === "all" ? "border-2 border-black" : ""}`}
+          >
+            <Bell size={20} />
+            <span className="font-semibold">Todos</span>
+            <p className="text-xs text-gray-500">Ver todos os lembretes</p>
+          </button>
         </div>
 
-        {selectedProfile !== 'none' && (
-          <div className="space-y-3">
-            <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4 px-1">
-              Lembretes do Perfil {selectedProfile === 'basic' ? 'Básico' : 'Fitness'}
-            </h2>
-            {reminders
-              .filter(reminder => 
-                (selectedProfile === 'basic' && ['water', 'food_log', 'training_remind'].includes(reminder.id)) ||
-                (selectedProfile === 'fitness' && ['water', 'food_log', 'protein', 'calories', 'training_remind', 'weight', 'evolution_photo'].includes(reminder.id))
-              )
-              .map(reminder => {
-                const type = REMINDER_TYPES.find(t => t.id === reminder.id);
-                const Icon = type?.icon || Bell;
-                
-                return (
-                  <div key={reminder.id} className="app-card flex items-center gap-4 p-4">
-                    <div className={`w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center ${type?.color || 'text-black'}`}>
-                      <Icon size={20} />
-                    </div>
-                    
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-bold text-sm truncate">{reminder.title}</h3>
-                      <p className="text-xs text-gray-500 truncate">{reminder.description}</p>
-                    </div>
+        {selectedProfile === "basic" && <h2 className="text-lg font-bold mb-4">Lembretes do Perfil Básico</h2>}
+        {selectedProfile === "fitness" && <h2 className="text-lg font-bold mb-4">Lembretes do Perfil Fitness</h2>}
+        {selectedProfile === "all" && <h2 className="text-lg font-bold mb-4">Todos os Lembretes</h2>}
 
-                    <div className="flex items-center gap-3">
-                      {smartStatus[reminder.id] && reminder.enabled && (
-                        <div className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full animate-pulse">
-                          <Sparkles size={10} />
-                          <span>META ATINGIDA</span>
-                        </div>
-                      )}
+        <div className="space-y-4">
+          {filteredReminders.map(reminder => {
+            const Icon = REMINDER_TYPES.find(t => t.id === reminder.id)?.icon || Bell;
+            const isSmart = smartStatus[reminder.id];
 
-                      <button 
-                        onClick={() => {
-                          setSelectedReminder(reminder);
-                          setIsConfiguring(true);
-                        }}
-                        className="p-2 text-gray-400 hover:text-black transition-colors"
-                      >
-                        <Settings2 size={18} />
-                      </button>
-                      
-                      <button 
-                        onClick={() => toggleReminder(reminder.id)}
-                        className={`w-10 h-5 rounded-full transition-colors relative ${reminder.enabled ? 'bg-black' : 'bg-gray-200'}`}
-                      >
-                        <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${reminder.enabled ? 'left-5.5' : 'left-0.5'}`} />
-                      </button>
-                    </div>
+            return (
+              <div key={reminder.id} className="app-card flex items-center justify-between p-4">
+                <div className="flex items-center gap-4">
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${reminder.enabled ? "bg-black text-white" : "bg-gray-100 text-gray-500"}`}>
+                    <Icon size={20} />
                   </div>
-                );
-              })}
-          </div>
-        )}
-
-        {selectedProfile === 'none' && (
-          <div className="text-center text-gray-500 mt-12">
-            <p>Selecione um perfil acima para ver e configurar os lembretes.</p>
-          </div>
-        )}
+                  <div>
+                    <h3 className="font-semibold text-base">{reminder.title}</h3>
+                    <p className="text-xs text-gray-500">{reminder.description}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {isSmart && reminder.enabled && (
+                    <span className="text-xs text-green-600 font-medium">META ATINGIDA</span>
+                  )}
+                  <button
+                    onClick={() => toggleReminder(reminder.id)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${reminder.enabled ? "bg-black" : "bg-gray-200"}`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${reminder.enabled ? "translate-x-6" : "translate-x-1"}`}
+                    />
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSelectedReminder(reminder);
+                      setIsConfiguring(true);
+                    }}
+                    className="text-gray-400 hover:text-black transition-colors"
+                  >
+                    <ChevronRight size={20} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </AppLayout>
   );
