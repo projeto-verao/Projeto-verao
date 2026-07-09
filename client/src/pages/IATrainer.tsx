@@ -669,19 +669,19 @@ export default function IATrainer() {
                       </div>
                     </div>
 
-                    <div className="p-4 border-t bg-gray-50/50 flex gap-3">
+                    <div className="p-6 border-t bg-white flex flex-col gap-3">
                       <button 
                         onClick={() => handleDeleteEntry(selectedEntry.id)}
-                        className="flex-1 flex items-center justify-center gap-2 py-3 bg-red-50 text-red-600 rounded-xl text-sm font-bold hover:bg-red-100 transition-colors"
+                        className="w-full flex items-center justify-center gap-2 py-4 bg-red-500 text-white rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-red-600 transition-all active:scale-[0.98] shadow-lg shadow-red-200"
                       >
                         <Trash2 size={18} />
-                        Excluir Registro
+                        Excluir esta avaliação
                       </button>
                       <button 
                         onClick={() => setSelectedEntry(null)}
-                        className="flex-1 py-3 bg-black text-white rounded-xl text-sm font-bold hover:bg-gray-900 transition-colors"
+                        className="w-full py-4 bg-gray-100 text-gray-500 rounded-2xl text-sm font-bold hover:bg-gray-200 transition-all"
                       >
-                        Fechar
+                        Voltar
                       </button>
                     </div>
                   </div>
