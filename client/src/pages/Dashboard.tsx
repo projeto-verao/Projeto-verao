@@ -5,7 +5,7 @@ import AppLayout from "@/components/AppLayout";
 import { geminiService } from "@/lib/gemini";
 import { firestoreService, StoredWorkout } from "@/hooks/useFirebaseFirestore";
 import {
-  Utensils, Target, RefreshCw, Loader2, ChevronRight, Timer, X, Sparkles, Activity, Trash2, CheckCircle2, Play, Trophy
+  Utensils, Target, RefreshCw, Loader2, ChevronRight, Timer, X, Sparkles, Activity, Trash2, CheckCircle2, Play, Trophy, Info
 } from "lucide-react";
 import { toast } from "sonner";
 import { Timestamp } from "firebase/firestore";
