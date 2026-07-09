@@ -44,35 +44,50 @@ async function callGemini(
     body.generationConfig = { responseMimeType: "application/json" };
   }
 
-  const res = await fetch(
-    `${GEMINI_BASE}/${MODEL}:generateContent?key=${API_KEY}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }
-  );
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
 
-  if (!res.ok) {
-    const errText = await res.text();
-    console.error("[Gemini] Erro HTTP", res.status, errText);
-    if (res.status === 429) {
-      throw new Error("Limite de uso da IA atingido. Aguarde alguns minutos e tente novamente.");
+  try {
+    const res = await fetch(
+      `${GEMINI_BASE}/${MODEL}:generateContent?key=${API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      }
+    );
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error("[Gemini] Erro HTTP", res.status, errText);
+      if (res.status === 429) {
+        throw new Error("Limite de uso da IA atingido. Aguarde alguns minutos e tente novamente.");
+      }
+      throw new Error(`Erro na IA (HTTP ${res.status}). Tente novamente.`);
     }
-    throw new Error(`Erro na IA (HTTP ${res.status}). Tente novamente.`);
+
+    const data = await res.json();
+    const text: string | undefined =
+      data?.candidates?.[0]?.content?.parts
+        ?.map((p: GeminiPart) => p.text ?? "")
+        .join("") ?? undefined;
+
+    if (!text) {
+      console.error("[Gemini] Resposta sem texto:", JSON.stringify(data).slice(0, 500));
+      throw new Error("A IA não retornou uma resposta válida. Tente novamente.");
+    }
+    return text;
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error("A análise demorou mais do que o esperado. Verifique sua conexão ou tente novamente.");
+    }
+    throw error;
   }
 
-  const data = await res.json();
-  const text: string | undefined =
-    data?.candidates?.[0]?.content?.parts
-      ?.map((p: GeminiPart) => p.text ?? "")
-      .join("") ?? undefined;
 
-  if (!text) {
-    console.error("[Gemini] Resposta sem texto:", JSON.stringify(data).slice(0, 500));
-    throw new Error("A IA não retornou uma resposta válida. Tente novamente.");
-  }
-  return text;
 }
 
 function extractJson(text: string): any {

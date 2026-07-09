@@ -194,16 +194,21 @@ export default function IATrainer() {
 
     setAnalyzing(true);
     const toastId = toast.loading("A IA está analisando sua foto...");
-    try {
-      const reader = new FileReader();
-      reader.onload = async () => {
+    
+    const reader = new FileReader();
+    reader.onerror = () => {
+      toast.error("Erro ao ler o arquivo da foto.", { id: toastId });
+      setAnalyzing(false);
+    };
+
+    reader.onload = async () => {
+      try {
         const base64 = reader.result as string;
         
-        // Tarefa 5: IA analisa foto e retorna estimativas de medidas
+        // IA analisa foto e retorna estimativas de medidas
         const analysis = await geminiService.analyzeBody(base64, profile as any);
         
-        // Tenta extrair medidas do texto da IA se houver (o geminiService.analyzeBody retorna bfEstimate, muscleLevel, summary, tip)
-        // Para a Tarefa 5, vamos atualizar o estado de measurements com o BF estimado
+        // Atualiza o estado de measurements com o BF estimado
         const bfValue = parseFloat(analysis.bfEstimate) || "";
         setMeasurements(prev => ({
           ...prev,
@@ -220,11 +225,18 @@ export default function IATrainer() {
         
         toast.success("Análise visual concluída! As medidas foram estimadas abaixo.", { id: toastId });
         loadEvolution();
-      };
+      } catch (err: any) {
+        console.error("Erro na análise corporal:", err);
+        toast.error(err.message || "Erro ao analisar foto. Tente novamente.", { id: toastId });
+      } finally {
+        setAnalyzing(false);
+      }
+    };
+    
+    try {
       reader.readAsDataURL(file);
     } catch (err) {
-      toast.error("Erro ao analisar foto.", { id: toastId });
-    } finally {
+      toast.error("Erro ao processar imagem.", { id: toastId });
       setAnalyzing(false);
     }
   };
