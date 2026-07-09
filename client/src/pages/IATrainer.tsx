@@ -239,6 +239,13 @@ export default function IATrainer() {
         // IA analisa foto e retorna estimativas de medidas
         const analysis = await geminiService.analyzeBody(compressedBase64, profile as any);
         
+        // Validação de imagem humana
+        if (analysis.isValidHumanBody === false) {
+          toast.error(analysis.rejectionReason || "A foto enviada não parece ser de uma pessoa para avaliação física.", { id: toastId });
+          setAnalyzing(false);
+          return;
+        }
+
         // Atualiza o estado de measurements com TODAS as estimativas da IA
         setMeasurements({
           weightKg: analysis.weightKg || profile?.weightKg?.toString() || "",
