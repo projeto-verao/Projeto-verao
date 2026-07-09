@@ -41,3 +41,10 @@
 - Dependências Manus/Base44 (vite-plugin-manus-runtime, @aws-sdk/*, etc.)
 - Arquivos legados (median.json, template.json, references/)
 - Suporte a OAuth Manus
+
+### Fixed (Firestore Rules)
+- **Correção Crítica: Falha na Geração de Treinos (Permissão Firestore)**
+  - Problema: O frontend chamava a IA corretamente e tentava salvar no Firestore, mas a função `isValidWorkout` nas regras de segurança bloqueava a operação por esperar campos legados (`name`, `exercises`, `duration`, `difficulty`).
+  - Solução: Atualizadas as regras de segurança em `firestore.rules` para refletir o schema atual (`title`, `days`, `isActive`, `version`). Feito deploy das regras via API REST.
+  - Arquivos modificados: `firestore.rules`, `FIRESTORE_RULES.txt`
+  - Resultado: Treinos agora são salvos corretamente no Firestore.

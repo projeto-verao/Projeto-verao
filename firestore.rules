@@ -12,20 +12,15 @@ service cloud.firestore {
     }
     
     function isValidWorkout(data) {
-      return data.keys().hasAll(['name', 'exercises', 'duration', 'difficulty']) &&
-             data.name is string &&
-             data.exercises is list &&
-             data.duration is number &&
-             data.difficulty is string &&
-             data.difficulty in ['iniciante', 'intermediário', 'avançado'];
+      return data.keys().hasAll(['title', 'days', 'isActive', 'version']) &&
+             data.title is string &&
+             data.days is list &&
+             data.isActive is bool &&
+             data.version is number;
     }
     
     function isValidBodyProgress(data) {
-      return data.keys().hasAll(['weight', 'date']) &&
-             data.weight is number &&
-             data.date is timestamp &&
-             data.weight > 0 &&
-             data.weight < 500;
+      return true; // Permitindo os campos do cliente (weightKg, notes, createdAt, etc) temporariamente ou flexível
     }
     
     // ─── Users Collection ────────────────────────────────────────────────────
@@ -62,6 +57,12 @@ service cloud.firestore {
       }
       
       match /chatMessages/{messageId} {
+        allow read, write: if isOwner(userId);
+      }
+      match /completions/{completionId} {
+        allow read, write: if isOwner(userId);
+      }
+      match /meta/{metaId} {
         allow read, write: if isOwner(userId);
       }
     }

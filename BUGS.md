@@ -14,3 +14,9 @@
 - [ ] **Fallback de Autenticação no Safari/WebView:** O `sdk.ts` usa o header `Authorization` como fallback quando os cookies são bloqueados. O `main.tsx` já envia o token do `localStorage` nesse header. É importante monitorar se essa solução é robusta em todos os cenários de bloqueio de cookies.
 - [ ] **DATABASE_URL em Produção:** O projeto atualmente funciona sem DATABASE_URL configurado, usando fallbacks em sessionStorage. Para produção, é essencial configurar DATABASE_URL apontando para um MySQL/TiDB real para garantir persistência de dados.
   - *Solução Proposta:* Configurar DATABASE_URL no ambiente de produção e remover os fallbacks de mock/sessionStorage.
+
+### [Resolvido] Falha na Geração de Treinos (Erro de Permissão Firestore)
+
+**Descrição:** O botão "Gerar Treino" chamava a API da IA corretamente, mas a persistência falhava, interrompendo o fluxo e não criando o treino na interface.
+**Causa Raiz:** Incompatibilidade entre os dados enviados pelo frontend (`title`, `days`, `isActive`, `version`) e a função de validação `isValidWorkout` no arquivo `firestore.rules` (que esperava os campos legados `name`, `exercises`, `duration`, `difficulty`). Isso causava um erro `Permission denied` no Firestore. A mesma incompatibilidade ocorria com `bodyProgress`.
+**Correção:** Atualização das regras do Firestore para validar os campos corretos enviados pela versão atual do aplicativo. As regras foram corrigidas localmente em `firestore.rules` e feito deploy via Firebase Admin REST API. Além disso, foram adicionadas permissões de leitura/escrita para as subcoleções `completions` e `meta`.

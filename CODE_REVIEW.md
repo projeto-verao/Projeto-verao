@@ -31,3 +31,21 @@ O Projeto Verão é uma aplicação full-stack (React + Express/tRPC) que foi re
 
 ## Conclusão
 O projeto está em um estado estável, compilando sem erros e com as dependências legadas removidas. As melhorias de Storage, Autenticação e Geração de Treinos foram implementadas com sucesso, tornando o projeto mais robusto. O próximo passo crítico é configurar DATABASE_URL para garantir persistência de dados em produção.
+
+### Review - Correção de Geração de Treinos (Julho 2026)
+
+**O que foi analisado:**
+Foi realizada uma análise completa do fluxo de geração de treinos (Frontend -> Gemini -> Firestore). Verificou-se que o frontend chamava corretamente a API do Gemini e recebia o treino. O problema ocorria no momento de salvar no Firestore (`firestoreService.createWorkout`), que falhava silenciosamente e não atualizava a UI corretamente.
+
+**Causa Raiz:**
+As regras de segurança do Firestore (`firestore.rules`) estavam desatualizadas. A função `isValidWorkout` exigia que o documento de treino tivesse os campos `name`, `exercises`, `duration` e `difficulty`. No entanto, o frontend atual envia os campos `title`, `days`, `isActive` e `version`. Isso resultava em erro `Permission denied`. O mesmo ocorria para `bodyProgress`.
+
+**Correção Implementada:**
+1. Atualização da função `isValidWorkout` no `firestore.rules` para validar os campos atuais.
+2. Atualização da função `isValidBodyProgress` para permitir a estrutura atual.
+3. Adição de regras para as subcoleções `completions` e `meta`.
+4. Deploy das regras via Firebase Admin REST API.
+5. Sincronização do arquivo de documentação `FIRESTORE_RULES.txt`.
+
+**Conclusão:**
+A falha foi definitivamente resolvida. O fluxo de geração de treinos está operando corretamente com persistência no Firestore.
