@@ -166,10 +166,14 @@ export const firestoreService = {
   },
 
   async listWorkouts(userId: string): Promise<StoredWorkout[]> {
-    const snap = await getDocs(userCol(userId, "workouts"));
+    const q = query(
+      userCol(userId, "workouts"),
+      orderBy("createdAt", "desc"),
+      fsLimit(20) // Limite de 20 treinos na lista
+    );
+    const snap = await getDocs(q);
     return snap.docs
-      .map((d) => ({ id: d.id, ...d.data() }) as StoredWorkout)
-      .sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
+      .map((d) => ({ id: d.id, ...d.data() }) as StoredWorkout);
   },
 
   async updateWorkout(userId: string, workoutId: string, updates: Partial<Omit<StoredWorkout, "id">>) {
@@ -184,7 +188,8 @@ export const firestoreService = {
   },
 
   async restoreWorkout(userId: string, workoutId: string) {
-    const all = await getDocs(userCol(userId, "workouts"));
+    const q = query(userCol(userId, "workouts"), fsLimit(100));
+    const all = await getDocs(q);
     await Promise.all(
       all.docs.map((d) =>
         updateDoc(d.ref, { isActive: d.id === workoutId, updatedAt: Timestamp.now() })
@@ -207,8 +212,13 @@ export const firestoreService = {
   },
 
   async getWeekCompletions(userId: string): Promise<WorkoutCompletionEntry[]> {
-    const snap = await getDocs(userCol(userId, "completions"));
     const weekStart = startOfWeek();
+    const q = query(
+      userCol(userId, "completions"),
+      orderBy("createdAt", "desc"),
+      fsLimit(30) // Limite razoável: no máximo 30 registros por semana
+    );
+    const snap = await getDocs(q);
     return snap.docs
       .map((d) => ({ id: d.id, ...d.data() }) as WorkoutCompletionEntry)
       .filter((c) => c.createdAt.toMillis() >= weekStart);
@@ -232,11 +242,14 @@ export const firestoreService = {
   },
 
   async getBodyProgressHistory(userId: string, max = 60): Promise<BodyProgressEntry[]> {
-    const snap = await getDocs(userCol(userId, "bodyProgress"));
+    const q = query(
+      userCol(userId, "bodyProgress"),
+      orderBy("createdAt", "desc"),
+      fsLimit(max)
+    );
+    const snap = await getDocs(q);
     return snap.docs
-      .map((d) => ({ id: d.id, ...d.data() }) as BodyProgressEntry)
-      .sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis())
-      .slice(0, max);
+      .map((d) => ({ id: d.id, ...d.data() }) as BodyProgressEntry);
   },
 
   // ── Goals ──────────────────────────────────────────────────────────────────
@@ -272,12 +285,16 @@ export const firestoreService = {
   },
 
   async getTodayMeals(userId: string): Promise<MealEntry[]> {
-    const snap = await getDocs(userCol(userId, "meals"));
     const today = startOfToday();
+    const todayTimestamp = Timestamp.fromMillis(today);
+    const q = query(
+      userCol(userId, "meals"),
+      where("createdAt", ">=", todayTimestamp),
+      orderBy("createdAt", "asc")
+    );
+    const snap = await getDocs(q);
     return snap.docs
-      .map((d) => ({ id: d.id, ...d.data() }) as MealEntry)
-      .filter((m) => m.createdAt.toMillis() >= today)
-      .sort((a, b) => a.createdAt.toMillis() - b.createdAt.toMillis());
+      .map((d) => ({ id: d.id, ...d.data() }) as MealEntry);
   },
 
   // ── Water ──────────────────────────────────────────────────────────────────
@@ -291,28 +308,44 @@ export const firestoreService = {
   },
 
   async getTodayWater(userId: string): Promise<number> {
-    const snap = await getDocs(userCol(userId, "waterLogs"));
     const today = startOfToday();
+    const todayTimestamp = Timestamp.fromMillis(today);
+    const q = query(
+      userCol(userId, "waterLogs"),
+      where("createdAt", ">=", todayTimestamp)
+    );
+    const snap = await getDocs(q);
     return snap.docs
       .map((d) => d.data() as Omit<WaterLogEntry, "id">)
-      .filter((w) => (w.createdAt as Timestamp).toMillis() >= today)
       .reduce((sum, w) => sum + (w.amountMl || 0), 0);
   },
 
   async getLast7DaysMeals(userId: string): Promise<MealEntry[]> {
-    const snap = await getDocs(userCol(userId, "meals"));
     const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const cutoffTimestamp = Timestamp.fromMillis(cutoff);
+    const q = query(
+      userCol(userId, "meals"),
+      where("createdAt", ">=", cutoffTimestamp),
+      orderBy("createdAt", "desc"),
+      fsLimit(100) // Limite de 100 refeições nos últimos 7 dias
+    );
+    const snap = await getDocs(q);
     return snap.docs
-      .map((d) => ({ id: d.id, ...d.data() }) as MealEntry)
-      .filter((m) => m.createdAt.toMillis() >= cutoff);
+      .map((d) => ({ id: d.id, ...d.data() }) as MealEntry);
   },
 
   async getLast7DaysWater(userId: string): Promise<{ amountMl: number; createdAt: Timestamp }[]> {
-    const snap = await getDocs(userCol(userId, "waterLogs"));
     const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const cutoffTimestamp = Timestamp.fromMillis(cutoff);
+    const q = query(
+      userCol(userId, "waterLogs"),
+      where("createdAt", ">=", cutoffTimestamp),
+      orderBy("createdAt", "desc"),
+      fsLimit(100) // Limite de 100 registros nos últimos 7 dias
+    );
+    const snap = await getDocs(q);
     return snap.docs
-      .map((d) => d.data() as { amountMl: number; createdAt: Timestamp })
-      .filter((w) => w.createdAt.toMillis() >= cutoff);
+      .map((d) => d.data() as { amountMl: number; createdAt: Timestamp });
   },
 
   // ── Nutrition recommendation ───────────────────────────────────────────────
@@ -351,7 +384,14 @@ export const firestoreService = {
   },
 
   async clearChatHistory(userId: string) {
-    const snap = await getDocs(userCol(userId, "chatMessages"));
+    // Limitar a 100 por vez para evitar timeouts em chats longos
+    const q = query(userCol(userId, "chatMessages"), fsLimit(100));
+    const snap = await getDocs(q);
     await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
+    // Se ainda houver mais, deletar em lotes
+    if (snap.docs.length === 100) {
+      const remaining = await getDocs(q);
+      await Promise.all(remaining.docs.map((d) => deleteDoc(d.ref)));
+    }
   },
 };

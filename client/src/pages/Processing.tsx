@@ -5,6 +5,21 @@ import { geminiService } from "@/lib/gemini";
 import { firestoreService } from "@/hooks/useFirebaseFirestore";
 import { Dumbbell, AlertCircle } from "lucide-react";
 
+/**
+ * Converte uma URL de imagem do Firebase Storage para base64.
+ * Usado para enviar a foto de avaliação à IA (Gemini requer base64).
+ */
+async function fetchImageAsBase64(url: string): Promise<string> {
+  const response = await fetch(url);
+  const blob = await response.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
 const MESSAGES = [
   "Analisando sua composição corporal...",
   "Processando suas informações...",
@@ -26,12 +41,28 @@ export default function Processing() {
   const runGeneration = async () => {
     if (!user) return;
     try {
-      // 1. Análise corporal opcional via foto de avaliação (base64 no sessionStorage)
+      // 1. Análise corporal opcional via foto de avaliação
       let bodyAnalysisSummary: string | undefined;
-      const evalPhoto = sessionStorage.getItem("evalPhotoBase64");
-      if (evalPhoto) {
+      
+      // Tentar obter a foto de avaliação do perfil (Firebase Storage)
+      let evalPhotoBase64: string | undefined;
+      const evalPhotoUrl = (profile as any)?.evalPhotoUrl;
+      if (evalPhotoUrl) {
         try {
-          const analysis = await geminiService.analyzeBody(evalPhoto, profile as any);
+          evalPhotoBase64 = await fetchImageAsBase64(evalPhotoUrl);
+        } catch (e) {
+          console.warn("Falha ao baixar foto de avaliação do Storage:", e);
+        }
+      }
+      
+      // Fallback: sessionStorage (para compatibilidade com cadastros antigos)
+      if (!evalPhotoBase64) {
+        evalPhotoBase64 = sessionStorage.getItem("evalPhotoBase64") || undefined;
+      }
+
+      if (evalPhotoBase64) {
+        try {
+          const analysis = await geminiService.analyzeBody(evalPhotoBase64, profile as any);
           bodyAnalysisSummary = `Gordura corporal estimada: ${analysis.bfEstimate}. Nível muscular: ${analysis.muscleLevel}. ${analysis.summary}`;
           // Salvar análise como primeiro registro de progresso corporal
           await firestoreService.addBodyProgress(user.uid, {
@@ -59,7 +90,7 @@ export default function Processing() {
           : "Primeiro treino gerado pela IA",
       });
 
-      // Limpar foto temporária
+      // Limpar foto temporária (fallback para cadastros antigos)
       sessionStorage.removeItem("evalPhotoBase64");
 
       setProgress(100);

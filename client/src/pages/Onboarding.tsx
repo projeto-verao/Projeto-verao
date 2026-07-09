@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import { useFirebaseStorage } from "@/hooks/useFirebaseStorage";
 import {
   Loader2, ChevronRight, Camera, ImageIcon, UserCircle2, ScanLine, CheckCircle2, X
 } from "lucide-react";
 import { toast } from "sonner";
+import { auth } from "@/lib/firebase";
 
 /**
  * Redimensiona uma imagem para caber no Firestore (limite ~1MB por doc)
@@ -173,6 +175,19 @@ export default function Onboarding() {
     const toastId = toast.loading("Salvando suas informações...");
 
     try {
+      // Salvar foto de avaliação no Firebase Storage se existir
+      let evalPhotoUrl: string | undefined = undefined;
+      if (evalPhoto) {
+        try {
+          const storage = useFirebaseStorage();
+          const uploadPath = `evaluations/${auth.currentUser?.uid}_${Date.now()}.jpg`;
+          evalPhotoUrl = await storage.uploadFromDataUrl(evalPhoto, uploadPath);
+        } catch (uploadError) {
+          console.warn("Erro ao fazer upload da foto de avaliação:", uploadError);
+          // Continua sem a foto se o upload falhar
+        }
+      }
+
       await updateProfile({
         name: form.name,
         age: parseInt(form.age),
@@ -189,15 +204,9 @@ export default function Onboarding() {
         preferredExercises: form.likes,
         avoidedExercises: form.dislikes,
         photoUrl: profilePhoto || undefined,
+        evalPhotoUrl: evalPhotoUrl || undefined,
         onboardingCompleted: true,
       } as any);
-
-      // Foto de avaliação vai para o Processing via sessionStorage (base64)
-      if (evalPhoto) {
-        sessionStorage.setItem("evalPhotoBase64", evalPhoto);
-      } else {
-        sessionStorage.removeItem("evalPhotoBase64");
-      }
 
       toast.success("Cadastro finalizado!", { id: toastId });
       navigate("/processing");

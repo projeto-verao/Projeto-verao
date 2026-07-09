@@ -17,11 +17,11 @@ export default function Home() {
       return;
     }
 
-    // Se autenticado e tem perfil completo, ir para dashboard
-    if (profile && profile.goal) {
+    // Se autenticado e onboarding completo, ir para dashboard
+    if (profile && (profile as any).onboardingCompleted) {
       navigate("/dashboard");
     } else {
-      // Após login, se não tiver perfil completo, vai para Welcome
+      // Após login, se onboarding não completo, vai para Welcome
       navigate("/welcome");
     }
   }, [isAuthenticated, loading, profile, navigate]);
