@@ -152,6 +152,14 @@ export interface BodyAnalysis {
   muscleLevel: string;
   summary: string;
   tip: string;
+  weightKg?: string;
+  chestCm?: string;
+  waistCm?: string;
+  armCm?: string;
+  thighCm?: string;
+  strengths?: string;
+  improvements?: string;
+  detailedAnalysis?: string;
 }
 
 export interface ChatResponse {
@@ -248,14 +256,27 @@ Regras:
       : "";
 
     const prompt = `Analise esta foto de corpo inteiro para avaliação física. ${contextText}
-
-Responda APENAS com JSON válido:
-{
-  "bfEstimate": "estimativa de percentual de gordura, ex: 18-22%",
-  "muscleLevel": "nível de massa muscular: Baixo, Médio ou Alto",
-  "summary": "resumo objetivo da composição corporal em 2-3 frases",
-  "tip": "uma dica prática personalizada"
-}`;
+	
+	Responda APENAS com JSON válido seguindo EXATAMENTE esta estrutura:
+	{
+	  "bfEstimate": "estimativa de percentual de gordura, ex: 18",
+	  "muscleLevel": "Baixo, Médio ou Alto",
+	  "weightKg": "estimativa de peso em kg, ex: 75.5",
+	  "chestCm": "estimativa de peitoral em cm, ex: 102",
+	  "waistCm": "estimativa de cintura em cm, ex: 88",
+	  "armCm": "estimativa de braço em cm, ex: 38",
+	  "thighCm": "estimativa de coxa em cm, ex: 58",
+	  "summary": "resumo objetivo da composição corporal em 2-3 frases",
+	  "tip": "uma dica prática personalizada",
+	  "strengths": "pontos fortes identificados na musculatura",
+	  "improvements": "pontos que precisam de maior desenvolvimento",
+	  "detailedAnalysis": "Texto explicativo detalhado com a análise (ex: Com base na foto, você apresenta um percentual de gordura estimado em X%. Os braços demonstram bom desenvolvimento, porém o peitoral superior e as pernas podem se beneficiar de maior volume de treino. A cintura está proporcional ao tronco e a postura parece adequada. Essas medidas são estimativas visuais e não substituem medições reais.)"
+	}
+	
+	Regras:
+	1. Forneça estimativas numéricas para as medidas (sem o 'cm' ou '%').
+	2. Se não tiver confiança total, forneça uma estimativa aproximada baseada em padrões anatômicos.
+	3. A 'detailedAnalysis' deve ser motivadora e profissional.`;
 
     const text = await callGemini(
       [

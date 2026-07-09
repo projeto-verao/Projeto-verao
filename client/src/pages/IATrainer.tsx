@@ -239,19 +239,34 @@ export default function IATrainer() {
         // IA analisa foto e retorna estimativas de medidas
         const analysis = await geminiService.analyzeBody(compressedBase64, profile as any);
         
-        // Atualiza o estado de measurements com o BF estimado
-        const bfValue = parseFloat(analysis.bfEstimate) || "";
-        setMeasurements(prev => ({
-          ...prev,
-          bodyFatPercent: bfValue.toString(),
-          weightKg: profile?.weightKg?.toString() || ""
-        }));
+        // Atualiza o estado de measurements com TODAS as estimativas da IA
+        setMeasurements({
+          weightKg: analysis.weightKg || profile?.weightKg?.toString() || "",
+          bodyFatPercent: analysis.bfEstimate || "",
+          chestCm: analysis.chestCm || "",
+          waistCm: analysis.waistCm || "",
+          armCm: analysis.armCm || "",
+          thighCm: analysis.thighCm || ""
+        });
+
+        // Constrói a nota detalhada para o histórico
+        const fullNotes = [
+          analysis.detailedAnalysis,
+          `**Pontos Fortes:** ${analysis.strengths}`,
+          `**Melhorias:** ${analysis.improvements}`,
+          `**Resumo:** ${analysis.summary}`,
+          `**Dica:** ${analysis.tip}`
+        ].filter(Boolean).join("\n\n");
 
         await firestoreService.addBodyProgress(user.uid, {
           photoUrl: compressedBase64,
           bodyFatPercent: parseFloat(analysis.bfEstimate) || undefined,
-          notes: `${analysis.summary}\n\nDica: ${analysis.tip}`,
-          weightKg: profile?.weightKg,
+          weightKg: parseFloat(analysis.weightKg || "") || profile?.weightKg,
+          chestCm: parseFloat(analysis.chestCm || "") || undefined,
+          waistCm: parseFloat(analysis.waistCm || "") || undefined,
+          armCm: parseFloat(analysis.armCm || "") || undefined,
+          thighCm: parseFloat(analysis.thighCm || "") || undefined,
+          notes: fullNotes,
         });
         
         toast.success("Análise visual concluída! As medidas foram estimadas abaixo.", { id: toastId });
