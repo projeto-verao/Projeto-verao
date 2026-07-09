@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFirebaseStorage } from "@/hooks/useFirebaseStorage";
+import { geminiService } from "@/lib/gemini";
 import {
   Loader2, ChevronRight, Camera, ImageIcon, UserCircle2, ScanLine, CheckCircle2, X
 } from "lucide-react";
@@ -59,11 +60,24 @@ function PhotoSection({ title, description, note, photo, onPhoto, onClear, icon,
 
   const handleFile = async (file: File | undefined) => {
     if (!file) return;
+    const toastId = toast.loading("Validando imagem...");
     try {
       const dataUrl = await resizeImage(file);
+      
+      // Validação da IA para a foto de avaliação (apenas se for a seção de avaliação)
+      if (inputIdPrefix === "eval-photo") {
+        const validation = await geminiService.validateBodyPhoto(dataUrl);
+        if (!validation.isValid) {
+          toast.error(validation.reason || "Esta foto não é adequada para avaliação física.", { id: toastId });
+          return;
+        }
+      }
+      
       onPhoto(dataUrl);
-    } catch {
-      toast.error("Não foi possível processar a imagem. Tente outra foto.");
+      toast.success("Imagem validada!", { id: toastId });
+    } catch (err) {
+      console.error(err);
+      toast.error("Não foi possível processar a imagem. Tente outra foto.", { id: toastId });
     }
   };
 

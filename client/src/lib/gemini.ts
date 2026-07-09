@@ -245,6 +245,49 @@ Regras:
   },
 
   /**
+   * Valida se uma foto contém um ser humano adequado para avaliação física.
+   */
+  async validateBodyPhoto(photoBase64: string): Promise<{ isValid: boolean; reason?: string }> {
+    const base64 = photoBase64.replace(/^data:image\/\w+;base64,/, "");
+    const mimeMatch = photoBase64.match(/^data:(image\/\w+);base64,/);
+    const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
+
+    const prompt = `Analise esta imagem. Ela deve ser uma foto de um ser humano em contexto de avaliação física (corpo inteiro ou parte do tronco/pernas visível para análise de composição corporal).
+    
+    Responda APENAS com JSON válido seguindo esta estrutura:
+    {
+      "isValid": true ou false,
+      "reason": "se isValid for false, explique por que em português (ex: 'A foto é de um animal', 'A foto é de um objeto', 'A imagem está muito escura ou embaçada', 'Não é possível ver o corpo da pessoa adequadamente para avaliação')"
+    }
+    
+    Regras:
+    1. Retorne isValid: false se a imagem for de animais, objetos, paisagens ou se a pessoa estiver tão coberta ou distante que não dê para avaliar a forma física.
+    2. Seja criterioso. Queremos evitar fotos que não sirvam para análise fitness.`;
+
+    try {
+      const text = await callGemini(
+        [
+          {
+            role: "user",
+            parts: [
+              { text: prompt },
+              { inline_data: { mime_type: mimeType, data: base64 } },
+            ],
+          },
+        ],
+        "Você é um especialista em validação de imagens para fitness.",
+        false, // sem histórico
+        0.1 // baixa temperatura para validação
+      );
+      const json = JSON.parse(text);
+      return { isValid: !!json.isValid, reason: json.reason };
+    } catch (e) {
+      console.error("Erro na validação de imagem:", e);
+      return { isValid: true }; // Fallback permissivo
+    }
+  },
+
+  /**
    * Analisa uma foto de corpo inteiro (base64) e retorna composição corporal.
    */
   async analyzeBody(photoBase64: string, profile?: ProfileData): Promise<BodyAnalysis> {
