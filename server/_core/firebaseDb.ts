@@ -10,7 +10,7 @@
  */
 
 import { initializeApp, getApps } from "firebase-admin/app";
-import { getFirestore, Timestamp, FirestoreError } from "firebase-admin/firestore";
+import { getFirestore, Timestamp } from "firebase-admin/firestore";
 
 let db: any = null;
 
