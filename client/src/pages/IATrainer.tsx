@@ -203,10 +203,41 @@ export default function IATrainer() {
 
     reader.onload = async () => {
       try {
-        const base64 = reader.result as string;
+        const rawBase64 = reader.result as string;
         
+        // Compressão da imagem antes de enviar para IA e Firestore
+        const compressedBase64 = await new Promise<string>((resolve, reject) => {
+          const img = new Image();
+          img.src = rawBase64;
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+            const MAX_SIZE = 800; // Tamanho máximo para garantir que fique abaixo de 1MB
+
+            if (width > height) {
+              if (width > MAX_SIZE) {
+                height *= MAX_SIZE / width;
+                width = MAX_SIZE;
+              }
+            } else {
+              if (height > MAX_SIZE) {
+                width *= MAX_SIZE / height;
+                height = MAX_SIZE;
+              }
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx?.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', 0.7)); // 70% de qualidade
+          };
+          img.onerror = reject;
+        });
+
         // IA analisa foto e retorna estimativas de medidas
-        const analysis = await geminiService.analyzeBody(base64, profile as any);
+        const analysis = await geminiService.analyzeBody(compressedBase64, profile as any);
         
         // Atualiza o estado de measurements com o BF estimado
         const bfValue = parseFloat(analysis.bfEstimate) || "";
@@ -217,7 +248,7 @@ export default function IATrainer() {
         }));
 
         await firestoreService.addBodyProgress(user.uid, {
-          photoUrl: base64,
+          photoUrl: compressedBase64,
           bodyFatPercent: parseFloat(analysis.bfEstimate) || undefined,
           notes: `${analysis.summary}\n\nDica: ${analysis.tip}`,
           weightKg: profile?.weightKg,
