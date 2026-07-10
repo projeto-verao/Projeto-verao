@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Timestamp } from "firebase/firestore";
+import VideoModal from "@/components/VideoModal";
 
 export default function Dashboard() {
   const { user, profile, isAuthenticated, loading: authLoading } = useAuth();
@@ -46,6 +47,9 @@ export default function Dashboard() {
     nextWorkout: string;
     nextTiming: string;
   } | null>(null);
+
+  // ── Estado do Modal de Vídeo ──────────────────────────────────────────────
+  const [selectedVideoExercise, setSelectedVideoExercise] = useState<string | null>(null);
 
   const target = profile?.daysPerWeek || 4;
 
@@ -315,6 +319,15 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Video Modal Overlay */}
+      {selectedVideoExercise && user && (
+        <VideoModal 
+          exerciseName={selectedVideoExercise} 
+          userId={user.uid} 
+          onClose={() => setSelectedVideoExercise(null)} 
+        />
+      )}
+
       {/* Workout Timer Floating Bar */}
       {isTraining && !selectedDay && (
         <div className="fixed inset-x-0 bottom-24 z-[90] px-5 animate-in slide-in-from-bottom-4 duration-300">
@@ -552,17 +565,26 @@ export default function Dashboard() {
                             </p>
                             {ex.notes && <p className="text-[11px] text-gray-500 mt-1 italic">{ex.notes}</p>}
                           </div>
-                          <button
-                            onClick={() => handleMarkAllSetsOfExercise(day.dayNumber, idx, ex.sets)}
-                            disabled={!isTraining}
-                            className={`text-[10px] px-3 py-1.5 rounded-full font-bold uppercase tracking-tighter shrink-0 transition-all ${
-                              isTraining 
-                                ? "bg-black text-white hover:bg-gray-800 active:scale-95 cursor-pointer" 
-                                : "bg-gray-100 text-gray-300 cursor-not-allowed"
-                            }`}
-                          >
-                            {ex.sets} séries
-                          </button>
+                          <div className="flex flex-col gap-2 items-end">
+                            <button
+                              onClick={() => setSelectedVideoExercise(ex.name)}
+                              className="flex items-center gap-1.5 text-[10px] font-black text-orange-500 uppercase tracking-widest bg-orange-50 px-3 py-1.5 rounded-full hover:bg-orange-100 transition-colors"
+                            >
+                              <Play size={10} fill="currentColor" />
+                              Como Fazer
+                            </button>
+                            <button
+                              onClick={() => handleMarkAllSetsOfExercise(day.dayNumber, idx, ex.sets)}
+                              disabled={!isTraining}
+                              className={`text-[10px] px-3 py-1.5 rounded-full font-bold uppercase tracking-tighter shrink-0 transition-all ${
+                                isTraining 
+                                  ? "bg-black text-white hover:bg-gray-800 active:scale-95 cursor-pointer" 
+                                  : "bg-gray-100 text-gray-300 cursor-not-allowed"
+                              }`}
+                            >
+                              {ex.sets} séries
+                            </button>
+                          </div>
                         </div>
 
                         {/* Campo de Carga */}

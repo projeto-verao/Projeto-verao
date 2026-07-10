@@ -65,6 +65,30 @@ export interface ExerciseLoadEntry {
   loadKg: number;
 }
 
+export interface ExerciseVideo {
+  id: string; // exerciseName slug
+  exerciseName: string;
+  muscleGroup?: string;
+  equipment?: string;
+  videoUrl: string;
+  language: string;
+  likes: number;
+  dislikes: number;
+  totalRatings: number;
+  ratingAverage: number;
+  backupVideoUrl?: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface VideoFeedback {
+  userId: string;
+  exerciseId: string;
+  isUseful: boolean;
+  reason?: string;
+  createdAt: Timestamp;
+}
+
 export interface WorkoutCompletionEntry {
   id: string;
   userId: string;
@@ -269,6 +293,69 @@ export const firestoreService = {
       }
     });
     return loads;
+  },
+
+  // ── Exercise Video Library ──────────────────────────────────────────────────
+
+  async getExerciseVideo(exerciseName: string): Promise<ExerciseVideo | null> {
+    const id = exerciseName.toLowerCase().trim().replace(/\s+/g, '-');
+    const docRef = doc(db, "exerciseVideos", id);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) return { id: snap.id, ...snap.data() } as ExerciseVideo;
+    return null;
+  },
+
+  async saveExerciseVideo(video: Omit<ExerciseVideo, "id" | "createdAt" | "updatedAt">): Promise<void> {
+    const id = video.exerciseName.toLowerCase().trim().replace(/\s+/g, '-');
+    const docRef = doc(db, "exerciseVideos", id);
+    await setDoc(docRef, {
+      ...video,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+  },
+
+  async rateExerciseVideo(userId: string, exerciseId: string, isUseful: boolean, reason?: string): Promise<void> {
+    const feedbackRef = doc(db, "exerciseVideos", exerciseId, "feedback", userId);
+    await setDoc(feedbackRef, {
+      userId,
+      exerciseId,
+      isUseful,
+      reason,
+      createdAt: serverTimestamp()
+    });
+
+    // Atualizar contadores no documento principal do vídeo
+    const videoRef = doc(db, "exerciseVideos", exerciseId);
+    const videoSnap = await getDoc(videoRef);
+    if (videoSnap.exists()) {
+      const data = videoSnap.data() as ExerciseVideo;
+      const newLikes = isUseful ? (data.likes || 0) + 1 : (data.likes || 0);
+      const newDislikes = !isUseful ? (data.dislikes || 0) + 1 : (data.dislikes || 0);
+      const newTotal = (data.totalRatings || 0) + 1;
+      const newAvg = (newLikes / newTotal) * 5;
+
+      await updateDoc(videoRef, {
+        likes: newLikes,
+        dislikes: newDislikes,
+        totalRatings: newTotal,
+        ratingAverage: newAvg,
+        updatedAt: serverTimestamp()
+      });
+    }
+  },
+
+  async updateVideoUrl(exerciseId: string, newUrl: string, backupUrl?: string): Promise<void> {
+    const videoRef = doc(db, "exerciseVideos", exerciseId);
+    await updateDoc(videoRef, {
+      videoUrl: newUrl,
+      backupVideoUrl: backupUrl,
+      likes: 0,
+      dislikes: 0,
+      totalRatings: 0,
+      ratingAverage: 0,
+      updatedAt: serverTimestamp()
+    });
   },
 
   async getWeekCompletions(userId: string): Promise<WorkoutCompletionEntry[]> {

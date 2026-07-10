@@ -460,4 +460,26 @@ Seja motivador e profissional.`;
       "Você é um nutricionista esportivo especializado em planos personalizados."
     );
   },
+
+  /**
+   * Localiza um vídeo demonstrativo no YouTube para um exercício.
+   */
+  async searchExerciseVideo(exerciseName: string): Promise<{ videoUrl: string; language: string }> {
+    const prompt = `Você é um especialista em fitness. Localize um link de vídeo demonstrativo de alta qualidade no YouTube para o exercício: "${exerciseName}".
+    Priorize vídeos em Português (Brasil) que mostrem a execução correta e técnica.
+    
+    Retorne APENAS um JSON no formato:
+    {
+      "videoUrl": "URL_DO_YOUTUBE",
+      "language": "pt-BR"
+    }`;
+
+    const text = await callGemini(
+      [{ role: "user", parts: [{ text: prompt }] }],
+      "Você é um especialista em biomecânica e exercícios físicos.",
+      true
+    );
+
+    return extractJson(text);
+  }
 };
