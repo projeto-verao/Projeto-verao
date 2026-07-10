@@ -7,13 +7,11 @@
  */
 
 // A chave é substituída pelo Vite no build time
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+const GEMINI_API_KEY = (typeof process !== 'undefined' && process.env && process.env.VITE_GEMINI_API_KEY) || (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_GEMINI_API_KEY);
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 const MODEL = "gemini-2.5-flash";
 
 // Garantir que a chave seja sempre uma string válida no runtime
-const API_KEY = String(GEMINI_API_KEY || "");
-
 interface GeminiPart {
   text?: string;
   inline_data?: { mime_type: string; data: string };
@@ -29,8 +27,12 @@ async function callGemini(
   systemInstruction?: string,
   jsonMode = false
 ): Promise<string> {
+  const apiKey = (typeof process !== 'undefined' && process.env && process.env.VITE_GEMINI_API_KEY) || 
+                 (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_GEMINI_API_KEY) || 
+                 "";
+
   // Validação no runtime (evita tree-shaking do Rollup)
-  if (API_KEY.length < 5) {
+  if (apiKey.length < 5) {
     throw new Error(
       "Chave da API Gemini não configurada. Defina VITE_GEMINI_API_KEY no build."
     );
@@ -49,7 +51,7 @@ async function callGemini(
 
   try {
     const res = await fetch(
-      `${GEMINI_BASE}/${MODEL}:generateContent?key=${API_KEY}`,
+      `${GEMINI_BASE}/${MODEL}:generateContent?key=${apiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -480,6 +482,22 @@ Seja motivador e profissional.`;
       true
     );
 
-    return extractJson(text);
+    const result = extractJson(text);
+    
+    // Validar se a URL é uma URL válida do YouTube
+    if (!result.videoUrl) {
+      throw new Error(`A IA não retornou uma URL válida para o exercício: ${exerciseName}`);
+    }
+    
+    const isValidYoutubeUrl = 
+      result.videoUrl.includes('youtube.com') || 
+      result.videoUrl.includes('youtu.be');
+    
+    if (!isValidYoutubeUrl) {
+      console.warn(`URL retornada não é do YouTube: ${result.videoUrl}`);
+      throw new Error(`A IA retornou uma URL inválida. Esperado: YouTube, Recebido: ${result.videoUrl}`);
+    }
+    
+    return result;
   }
 };

@@ -51,7 +51,9 @@ export default function VideoModal({ exerciseName, userId, onClose }: VideoModal
   }, [exerciseName]);
 
   const handleRate = async (isUseful: boolean, reason?: string) => {
-    if (!video || rated) return;
+    if (!video) return;
+    // Permitir múltiplas chamadas se o usuário está selecionando um motivo
+    if (rated && !reason) return;
     try {
       await firestoreService.rateExerciseVideo(userId, video.id, isUseful, reason);
       setRated(true);

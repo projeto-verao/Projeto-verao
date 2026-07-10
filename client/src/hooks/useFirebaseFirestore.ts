@@ -14,6 +14,8 @@ import {
   Timestamp,
   writeBatch,
   onSnapshot,
+  getDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
