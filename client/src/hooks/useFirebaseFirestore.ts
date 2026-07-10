@@ -60,6 +60,11 @@ export interface BodyProgressEntry {
   createdAt: Timestamp;
 }
 
+export interface ExerciseLoadEntry {
+  exerciseName: string;
+  loadKg: number;
+}
+
 export interface WorkoutCompletionEntry {
   id: string;
   userId: string;
@@ -71,6 +76,7 @@ export interface WorkoutCompletionEntry {
   startTime?: Timestamp;
   endTime?: Timestamp;
   workoutTitle?: string;
+  exerciseLoads?: ExerciseLoadEntry[];
   createdAt: Timestamp;
 }
 
@@ -232,6 +238,7 @@ export const firestoreService = {
       startTime?: Timestamp;
       endTime?: Timestamp;
       workoutTitle?: string;
+      exerciseLoads?: ExerciseLoadEntry[];
     }
   ): Promise<string> {
     const docRef = await addDoc(userCol(userId, "completions"), {
@@ -240,6 +247,28 @@ export const firestoreService = {
       createdAt: Timestamp.now(),
     });
     return docRef.id;
+  },
+
+  async getLastExerciseLoads(userId: string): Promise<Record<string, number>> {
+    const q = query(
+      userCol(userId, "completions"),
+      orderBy("createdAt", "desc"),
+      fsLimit(50)
+    );
+    const snap = await getDocs(q);
+    const loads: Record<string, number> = {};
+    
+    // Processar do mais antigo para o mais novo no limite para que o mais recente prevaleça
+    const docs = [...snap.docs].reverse();
+    docs.forEach(d => {
+      const data = d.data() as WorkoutCompletionEntry;
+      if (data.exerciseLoads) {
+        data.exerciseLoads.forEach(entry => {
+          loads[entry.exerciseName.toLowerCase()] = entry.loadKg;
+        });
+      }
+    });
+    return loads;
   },
 
   async getWeekCompletions(userId: string): Promise<WorkoutCompletionEntry[]> {

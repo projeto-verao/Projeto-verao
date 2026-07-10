@@ -431,33 +431,7 @@ export default function Reminders() {
           </button>
         </div>
 
-        <div className="bg-black rounded-3xl p-6 mb-8 text-white relative overflow-hidden">
-          <div className="relative z-10">
-            <h3 className="text-lg font-bold mb-2 flex items-center gap-2">
-              <Sparkles size={18} className="text-yellow-400" /> Configuração Rápida
-            </h3>
-            <p className="text-xs text-gray-400 mb-6 leading-relaxed">
-              Ative conjuntos de lembretes otimizados para seu nível de comprometimento.
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              <button 
-                onClick={() => applyPreset('basic')}
-                className="bg-white/10 hover:bg-white/20 py-3 rounded-xl text-xs font-bold transition-all border border-white/10"
-              >
-                BÁSICO
-              </button>
-              <button 
-                onClick={() => applyPreset('fitness')}
-                className="bg-orange-500 hover:bg-orange-600 py-3 rounded-xl text-xs font-bold transition-all shadow-lg shadow-orange-900/20"
-              >
-                FITNESS PRO
-              </button>
-            </div>
-          </div>
-          <div className="absolute -right-8 -bottom-8 opacity-10">
-            <Bell size={120} />
-          </div>
-        </div>
+
 
         <div className="space-y-4">
           {filteredReminders.map((reminder) => {

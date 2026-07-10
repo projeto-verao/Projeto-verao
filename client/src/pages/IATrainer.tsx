@@ -70,15 +70,18 @@ export default function IATrainer() {
     try {
       await firestoreService.addChatMessage(user.uid, "user", userMsg);
 
-      // Contexto do treino ativo para que a IA possa alterá-lo
+      // Contexto do treino ativo e histórico de cargas para que a IA possa analisar a evolução
       let workoutContext: string | undefined;
       let activeWorkout: StoredWorkout | null = null;
       try {
         activeWorkout = await firestoreService.getActiveWorkout(user.uid);
+        const lastLoads = await firestoreService.getLastExerciseLoads(user.uid);
+        
         if (activeWorkout) {
           workoutContext = JSON.stringify({
             title: activeWorkout.title,
-            days: activeWorkout.days
+            days: activeWorkout.days,
+            lastExerciseLoads: lastLoads // Injetando o histórico de cargas no contexto da IA
           });
         }
       } catch { /* sem treino */ }

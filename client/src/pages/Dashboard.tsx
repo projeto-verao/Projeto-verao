@@ -3,9 +3,9 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import AppLayout from "@/components/AppLayout";
 import { geminiService } from "@/lib/gemini";
-import { firestoreService, StoredWorkout } from "@/hooks/useFirebaseFirestore";
+import { firestoreService, StoredWorkout, ExerciseLoadEntry } from "@/hooks/useFirebaseFirestore";
 import {
-  Utensils, Target, RefreshCw, Loader2, ChevronRight, Timer, X, Sparkles, Activity, Trash2, CheckCircle2, Play, Trophy, Info
+  Utensils, Target, RefreshCw, Loader2, ChevronRight, Timer, X, Sparkles, Activity, Trash2, CheckCircle2, Play, Trophy, Info, Weight
 } from "lucide-react";
 import { toast } from "sonner";
 import { Timestamp } from "firebase/firestore";
@@ -24,6 +24,7 @@ export default function Dashboard() {
 
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [completedSets, setCompletedSets] = useState<Record<string, boolean>>({});
+  const [exerciseLoads, setExerciseLoads] = useState<Record<string, string>>({});
   const [restTimer, setRestTimer] = useState<{ seconds: number; isActive: boolean } | null>(null);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -33,8 +34,7 @@ export default function Dashboard() {
   const [weekCompleted, setWeekCompleted] = useState(0);
   const [currentWeek, setCurrentWeek] = useState(1);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [nextWorkoutInfo, setNextWorkoutInfo] = useState<{ dayTitle: string; timing: string; duration?: string } | null>(null);
-
+  
   // ── Estados do Cronômetro de Treino ────────────────────────────────────────
   const [isTraining, setIsTraining] = useState(false);
   const [workoutStartTime, setWorkoutStartTime] = useState<number | null>(null);
@@ -54,12 +54,20 @@ export default function Dashboard() {
     if (!user) return;
     setWorkoutLoading(true);
     try {
-      const [workout, completions] = await Promise.all([
+      const [workout, completions, lastLoads] = await Promise.all([
         firestoreService.getActiveWorkout(user.uid),
         firestoreService.getWeekCompletions(user.uid),
+        firestoreService.getLastExerciseLoads(user.uid),
       ]);
       setActiveWorkout(workout);
       setWeekCompleted(completions.length);
+
+      // Preencher cargas sugeridas (histórico)
+      const suggestedLoads: Record<string, string> = {};
+      Object.entries(lastLoads).forEach(([name, load]) => {
+        suggestedLoads[name] = load.toString();
+      });
+      setExerciseLoads(prev => ({ ...suggestedLoads, ...prev }));
 
       // Recuperar estado do cronômetro do localStorage
       const savedStartTime = localStorage.getItem(`workout_start_${user.uid}`);
@@ -167,23 +175,33 @@ export default function Dashboard() {
   };
 
   // ── Concluir dia de treino ─────────────────────────────────────────────────
-  const handleCompleteDay = async (dayNumber: number, totalExercises: number) => {
+  const handleCompleteDay = async (dayNumber: number) => {
     if (!user || !activeWorkout || !workoutStartTime) return;
     
+    const day = activeWorkout.days.find(d => d.dayNumber === dayNumber);
+    if (!day) return;
+
     const endTime = Date.now();
     const durationSeconds = Math.floor((endTime - workoutStartTime) / 1000);
     const durationText = formatDuration(durationSeconds);
+
+    // Coletar cargas dos exercícios deste dia
+    const loads: ExerciseLoadEntry[] = day.exercises.map(ex => ({
+      exerciseName: ex.name,
+      loadKg: parseFloat(exerciseLoads[ex.name.toLowerCase()] || "0")
+    })).filter(l => l.loadKg > 0);
 
     try {
       await firestoreService.addWorkoutCompletion(user.uid, {
         workoutId: activeWorkout.id,
         day: dayNumber,
-        completedExercises: totalExercises,
-        totalExercises,
+        completedExercises: day.exercises.length,
+        totalExercises: day.exercises.length,
         duration: durationSeconds,
         startTime: Timestamp.fromMillis(workoutStartTime),
         endTime: Timestamp.fromMillis(endTime),
-        workoutTitle: activeWorkout.days.find(d => d.dayNumber === dayNumber)?.title || "Treino"
+        workoutTitle: day.title || "Treino",
+        exerciseLoads: loads
       });
 
       // Limpar estado do cronômetro
@@ -341,63 +359,67 @@ export default function Dashboard() {
             <div className="bg-gray-50 rounded-3xl p-5 mb-8 text-left border border-gray-100">
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Próximo Desafio</p>
               <p className="font-black text-gray-900">{completionSummary.nextWorkout}</p>
-              <p className="text-xs text-green-600 font-bold">{completionSummary.nextTiming}</p>
+              <p className="text-xs text-orange-500 font-bold">{completionSummary.nextTiming}</p>
             </div>
 
-            <p className="text-sm text-gray-500 mb-8 italic">
-              "Continue assim! Cada treino concluído é um passo a mais em direção ao seu objetivo."
-            </p>
-
-            <button 
+            <button
               onClick={() => setShowCompletionModal(false)}
-              className="w-full py-5 rounded-[24px] font-black bg-black text-white shadow-xl active:scale-95 transition-all"
+              className="w-full bg-black text-white py-5 rounded-3xl font-bold shadow-xl active:scale-95 transition-all"
             >
-              VAMOS NESSA!
+              FECHAR
             </button>
           </div>
         </div>
       )}
 
-      {/* Confirm Delete Modal */}
+      {/* Delete Confirmation Modal */}
       {confirmDelete && (
-        <div className="fixed inset-0 z-[110] bg-black/50 flex items-center justify-center p-6" onClick={() => setConfirmDelete(false)}>
-          <div className="bg-white rounded-3xl p-6 w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
-            <h3 className="font-black text-gray-900 text-lg mb-2">Excluir treino?</h3>
-            <p className="text-sm text-gray-500 mb-6">Esta ação não pode ser desfeita. Você poderá gerar um novo treino a qualquer momento.</p>
+        <div className="fixed inset-0 z-[120] bg-black/80 flex items-center justify-center p-6 backdrop-blur-sm">
+          <div className="bg-white rounded-[40px] p-8 w-full max-w-sm text-center animate-in zoom-in-95 duration-300">
+            <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Trash2 size={32} className="text-red-500" />
+            </div>
+            <h3 className="font-black text-gray-900 text-xl mb-2">EXCLUIR TREINO?</h3>
+            <p className="text-gray-500 text-sm mb-8">Essa ação não pode ser desfeita. Você terá que gerar um novo treino com a IA.</p>
+            
             <div className="flex gap-3">
-              <button onClick={() => setConfirmDelete(false)} className="flex-1 py-3 rounded-2xl font-bold bg-gray-100 text-gray-700">Cancelar</button>
-              <button onClick={handleDeleteWorkout} className="flex-1 py-3 rounded-2xl font-bold bg-red-500 text-white">Excluir</button>
+              <button
+                onClick={() => setConfirmDelete(false)}
+                className="flex-1 bg-gray-100 text-gray-500 py-4 rounded-2xl font-bold active:scale-95 transition-all"
+              >
+                CANCELAR
+              </button>
+              <button
+                onClick={handleDeleteWorkout}
+                className="flex-1 bg-red-500 text-white py-4 rounded-2xl font-bold shadow-lg shadow-red-200 active:scale-95 transition-all"
+              >
+                EXCLUIR
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Header */}
-      <div className="px-5 pt-8 pb-4">
-        <div className="flex items-center justify-between">
+      <div className="p-4 pb-24">
+        {/* Header Section */}
+        <div className="flex items-center justify-between mb-8 px-2">
           <div>
-            <h1 className="text-2xl font-black text-gray-900 tracking-tight">OLÁ, {profile?.name?.split(' ')[0]?.toUpperCase() || 'ATLETA'}!</h1>
-            <p className="text-sm text-gray-500 font-medium">Sua rotina de treinos está pronta.</p>
+            <h1 className="text-2xl font-black tracking-tight text-gray-900">DASHBOARD</h1>
+            <p className="text-sm text-gray-500 font-medium">Bem-vindo, {profile?.name || "Atleta"}! 👋</p>
           </div>
-          <div className="flex gap-2">
-            <button onClick={() => navigate("/nutrition")} className="w-10 h-10 rounded-2xl bg-gray-100 flex items-center justify-center shadow-sm">
-              <Utensils size={18} className="text-gray-600" />
-            </button>
-            <button onClick={() => navigate("/goals")} className="w-10 h-10 rounded-2xl bg-gray-100 flex items-center justify-center shadow-sm">
-              <Target size={18} className="text-gray-600" />
-            </button>
+          <div className="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center text-black shadow-sm">
+            <Target size={24} />
           </div>
         </div>
-      </div>
 
-      <div className="px-5 space-y-5 pb-24">
         {/* Weekly Progress Card */}
-        <div className="bg-black rounded-[32px] p-6 text-white shadow-2xl relative overflow-hidden">
+        <div className="bg-black rounded-[32px] p-6 mb-8 text-white relative overflow-hidden shadow-2xl shadow-black/20">
           <div className="relative z-10">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                Semana {currentWeek} — Progresso
-              </span>
+            <div className="flex justify-between items-end mb-4">
+              <div>
+                <h3 className="text-xs font-bold text-white/50 uppercase tracking-widest mb-1">Progresso Semanal</h3>
+                <p className="text-2xl font-black">SEMANA {currentWeek}</p>
+              </div>
               <span className="text-orange-500 font-black text-xl">{Math.min(weekCompleted, target)}/{target}</span>
             </div>
             <div className="flex gap-2 mb-2">
@@ -523,10 +545,10 @@ export default function Dashboard() {
                     {day.exercises.map((ex, idx) => (
                       <div key={idx} className="bg-gray-50 rounded-3xl p-5 border border-gray-100">
                         <div className="flex justify-between items-start mb-4">
-                          <div>
+                          <div className="flex-1">
                             <h5 className="font-black text-gray-900 text-sm leading-tight mb-1">{ex.name?.toUpperCase()}</h5>
                             <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
-                              {ex.reps} reps · {ex.weight} · {ex.rest} de descanso
+                              {ex.reps} reps · {ex.rest} de descanso
                             </p>
                             {ex.notes && <p className="text-[11px] text-gray-500 mt-1 italic">{ex.notes}</p>}
                           </div>
@@ -542,6 +564,28 @@ export default function Dashboard() {
                             {ex.sets} séries
                           </button>
                         </div>
+
+                        {/* Campo de Carga */}
+                        <div className="mb-4 flex items-center gap-3 bg-white p-3 rounded-2xl border border-gray-100 shadow-sm">
+                          <div className="w-8 h-8 rounded-lg bg-orange-50 flex items-center justify-center text-orange-500">
+                            <Weight size={16} />
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">Carga Utilizada</p>
+                            <div className="flex items-center gap-2">
+                              <input 
+                                type="number" 
+                                placeholder="0"
+                                value={exerciseLoads[ex.name.toLowerCase()] || ""}
+                                onChange={(e) => setExerciseLoads(prev => ({ ...prev, [ex.name.toLowerCase()]: e.target.value }))}
+                                disabled={!isTraining}
+                                className="bg-transparent border-none p-0 text-sm font-black text-gray-900 focus:ring-0 w-16"
+                              />
+                              <span className="text-xs font-bold text-gray-400">kg</span>
+                            </div>
+                          </div>
+                        </div>
+
                         <div className="flex flex-wrap gap-2">
                           {Array.from({ length: ex.sets }).map((_, sIdx) => {
                             const isDone = completedSets[`${day.dayNumber}-${idx}-${sIdx}`];
@@ -569,7 +613,7 @@ export default function Dashboard() {
                     {/* Botão de concluir treino do dia */}
                     {isTraining && (
                       <button
-                        onClick={() => handleCompleteDay(day.dayNumber, day.exercises.length)}
+                        onClick={() => handleCompleteDay(day.dayNumber)}
                         className="w-full bg-green-500 text-white py-4 rounded-3xl font-bold shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
                       >
                         <CheckCircle2 size={18} />
