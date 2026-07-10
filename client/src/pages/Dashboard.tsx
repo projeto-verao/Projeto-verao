@@ -51,6 +51,16 @@ export default function Dashboard() {
   // ── Estado do Modal de Vídeo ──────────────────────────────────────────────
   const [selectedVideoExercise, setSelectedVideoExercise] = useState<string | null>(null);
 
+  // Efeito para resetar o scroll ao selecionar um dia de treino
+  useEffect(() => {
+    if (selectedDay !== null) {
+      const scrollContainer = document.querySelector('.app-content');
+      if (scrollContainer) {
+        scrollContainer.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    }
+  }, [selectedDay]);
+
   const target = profile?.daysPerWeek || 4;
 
   // ── Carregar treino ativo e persistência do cronômetro ─────────────────────

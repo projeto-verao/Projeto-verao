@@ -16,6 +16,7 @@ import {
   onSnapshot,
   getDoc,
   serverTimestamp,
+  increment,
 } from "firebase/firestore";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -322,28 +323,36 @@ export const firestoreService = {
 
   async rateExerciseVideo(userId: string, exerciseId: string, isUseful: boolean, reason?: string): Promise<void> {
     const feedbackRef = doc(db, "exerciseVideos", exerciseId, "feedback", userId);
-    await setDoc(feedbackRef, {
+    
+    const feedbackData: any = {
       userId,
       exerciseId,
       isUseful,
-      reason,
       createdAt: serverTimestamp()
-    });
+    };
+    
+    if (reason) feedbackData.reason = reason;
 
-    // Atualizar contadores no documento principal do vídeo
+    await setDoc(feedbackRef, feedbackData);
+
+    // Atualizar contadores no documento principal do vídeo usando increment do Firestore (mais seguro e atômico)
     const videoRef = doc(db, "exerciseVideos", exerciseId);
+    
+    // Buscar dados atuais para recalcular a média (increment não suporta cálculos complexos)
     const videoSnap = await getDoc(videoRef);
     if (videoSnap.exists()) {
       const data = videoSnap.data() as ExerciseVideo;
-      const newLikes = isUseful ? (data.likes || 0) + 1 : (data.likes || 0);
-      const newDislikes = !isUseful ? (data.dislikes || 0) + 1 : (data.dislikes || 0);
-      const newTotal = (data.totalRatings || 0) + 1;
+      const currentLikes = data.likes || 0;
+      const currentTotal = data.totalRatings || 0;
+      
+      const newLikes = isUseful ? currentLikes + 1 : currentLikes;
+      const newTotal = currentTotal + 1;
       const newAvg = (newLikes / newTotal) * 5;
 
       await updateDoc(videoRef, {
-        likes: newLikes,
-        dislikes: newDislikes,
-        totalRatings: newTotal,
+        likes: isUseful ? increment(1) : currentLikes,
+        dislikes: !isUseful ? increment(1) : (data.dislikes || 0),
+        totalRatings: increment(1),
         ratingAverage: newAvg,
         updatedAt: serverTimestamp()
       });
