@@ -70,6 +70,19 @@ service cloud.firestore {
       }
     }
     
+    // ─── Exercise Video Library ──────────────────────────────────────────────
+    
+    match /exerciseVideos/{exerciseId} {
+      // Leitura pública para todos os usuários autenticados
+      allow read: if isAuthenticated();
+      // Escrita permitida para usuários autenticados (IA ou usuários dando feedback)
+      allow write: if isAuthenticated();
+      
+      match /feedback/{userId} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
     // ─── Deny Everything Else ───────────────────────────────────────────────
     
     match /{document=**} {
