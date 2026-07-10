@@ -86,8 +86,6 @@ async function callGemini(
     }
     throw error;
   }
-
-
 }
 
 function extractJson(text: string): any {
@@ -276,8 +274,7 @@ Regras:
           },
         ],
         "Você é um especialista em validação de imagens para fitness.",
-        false, // sem histórico
-        0.1 // baixa temperatura para validação
+        false // sem histórico
       );
       const json = JSON.parse(text);
       return { isValid: !!json.isValid, reason: json.reason };
@@ -301,31 +298,31 @@ Regras:
       : "";
 
     const prompt = `Analise esta foto de corpo inteiro para avaliação física. ${contextText}
-		
-		Responda APENAS com JSON válido seguindo EXATAMENTE esta estrutura:
-		{
-		  "isValidHumanBody": true ou false,
-		  "rejectionReason": "se isValidHumanBody for false, explique por que (ex: 'A foto não contém uma pessoa', 'A foto é de um animal', 'A imagem está muito escura ou ilegível')",
-		  "bfEstimate": "estimativa de percentual de gordura, ex: 18",
-		  "muscleLevel": "Baixo, Médio ou Alto",
-		  "weightKg": "estimativa de peso em kg, ex: 75.5",
-		  "chestCm": "estimativa de peitoral em cm, ex: 102",
-		  "waistCm": "estimativa de cintura em cm, ex: 88",
-		  "armCm": "estimativa de braço em cm, ex: 38",
-		  "thighCm": "estimativa de coxa em cm, ex: 58",
-		  "summary": "resumo objetivo da composição corporal em 2-3 frases",
-		  "tip": "uma dica prática personalizada",
-		  "strengths": "pontos fortes identificados na musculatura",
-		  "improvements": "pontos que precisam de maior desenvolvimento",
-		  "detailedAnalysis": "Texto explicativo detalhado com a análise"
-		}
-		
-		Regras de Validação Cruciais:
-		1. Defina "isValidHumanBody" como FALSE se a imagem NÃO for de um ser humano em contexto de avaliação física (ex: animais, paisagens, objetos, pratos de comida).
-		2. Se "isValidHumanBody" for FALSE, os outros campos podem ser vazios ou nulos, mas o "rejectionReason" deve ser preenchido.
-		3. Forneça estimativas numéricas para as medidas (sem o 'cm' ou '%').
-		4. Se não tiver confiança total mas for uma pessoa, forneça uma estimativa aproximada baseada em padrões anatômicos.
-		5. A 'detailedAnalysis' deve ser motivadora e profissional.`;
+			
+			Responda APENAS com JSON válido seguindo EXATAMENTE esta estrutura:
+			{
+			  "isValidHumanBody": true ou false,
+			  "rejectionReason": "se isValidHumanBody for false, explique por que (ex: 'A foto não contém uma pessoa', 'A foto é de um animal', 'A imagem está muito escura ou ilegível')",
+			  "bfEstimate": "estimativa de percentual de gordura, ex: 18",
+			  "muscleLevel": "Baixo, Médio ou Alto",
+			  "weightKg": "estimativa de peso em kg, ex: 75.5",
+			  "chestCm": "estimativa de peitoral em cm, ex: 102",
+			  "waistCm": "estimativa de cintura em cm, ex: 88",
+			  "armCm": "estimativa de braço em cm, ex: 38",
+			  "thighCm": "estimativa de coxa em cm, ex: 58",
+			  "summary": "resumo objetivo da composição corporal em 2-3 frases",
+			  "tip": "uma dica prática personalizada",
+			  "strengths": "pontos fortes identificados na musculatura",
+			  "improvements": "pontos que precisam de maior desenvolvimento",
+			  "detailedAnalysis": "Texto explicativo detalhado com a análise"
+			}
+			
+			Regras de Validação Cruciais:
+			1. Defina "isValidHumanBody" como FALSE se a imagem NÃO for de um ser humano em contexto de avaliação física (ex: animais, paisagens, objetos, pratos de comida).
+			2. Se "isValidHumanBody" for FALSE, os outros campos podem ser vazios ou nulos, mas o "rejectionReason" deve ser preenchido.
+			3. Forneça estimativas numéricas para as medidas (sem o 'cm' ou '%').
+			4. Se não tiver confiança total mas for uma pessoa, forneça uma estimativa aproximada baseada em padrões anatômicos.
+			5. A 'detailedAnalysis' deve ser motivadora e profissional.`;
 
     const text = await callGemini(
       [
@@ -403,34 +400,32 @@ Sua resposta deve ser SEMPRE um JSON no seguinte formato:
   }> {
     const parts: GeminiPart[] = [
       {
-        text: `Analise esta refeição e estime os macronutrientes: "${description}"
-
-Responda APENAS com JSON válido:
-{
-  "calories": 0,
-  "proteinG": 0,
-  "carbsG": 0,
-  "fatG": 0,
-  "fiberG": 0,
-  "summary": "análise breve da refeição em 1-2 frases"
-}`,
+        text: `Analise esta refeição e estime as calorias e macronutrientes (proteína, carboidratos, gordura e fibra em gramas).
+        
+        Descrição: ${description}
+        
+        Responda APENAS com um JSON válido:
+        {
+          "calories": 0,
+          "proteinG": 0,
+          "carbsG": 0,
+          "fatG": 0,
+          "fiberG": 0,
+          "summary": "resumo de 1 frase dos nutrientes principais"
+        }`,
       },
     ];
 
     if (photoBase64) {
       const base64 = photoBase64.replace(/^data:image\/\w+;base64,/, "");
       const mimeMatch = photoBase64.match(/^data:(image\/\w+);base64,/);
-      parts.push({
-        inline_data: {
-          mime_type: mimeMatch ? mimeMatch[1] : "image/jpeg",
-          data: base64,
-        },
-      });
+      const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
+      parts.push({ inline_data: { mime_type: mimeType, data: base64 } });
     }
 
     const text = await callGemini(
       [{ role: "user", parts }],
-      "Você é um nutricionista especializado em análise de refeições. Responda em português do Brasil.",
+      "Você é um nutricionista digital especializado em estimar macros de fotos e descrições de pratos.",
       true
     );
 
@@ -438,18 +433,31 @@ Responda APENAS com JSON válido:
   },
 
   /**
-   * Gera recomendação nutricional diária com base no perfil.
+   * Gera recomendações nutricionais personalizadas com base no perfil.
    */
   async generateNutritionRecommendation(profile: ProfileData): Promise<string> {
-    const prompt = `Crie uma recomendação nutricional diária personalizada para:
-Idade: ${profile.age || "?"} | Sexo: ${profile.sex || "?"} | Altura: ${profile.heightCm || "?"}cm | Peso: ${profile.weightKg || "?"}kg
-Objetivo: ${profile.goal || "condicionamento geral"} | Nível de atividade: ${profile.daysPerWeek || 4} treinos/semana
+    const prompt = `Gere recomendações nutricionais detalhadas e personalizadas em português para o seguinte perfil fitness:
 
-Inclua: meta calórica diária, distribuição de macros (proteína/carbo/gordura), 3 dicas práticas de alimentação e meta de água. Seja conciso (máximo 300 palavras). Use formatação com emojis e tópicos.`;
+Nome: ${profile.name || "Usuário"}
+Idade: ${profile.age || "?"} anos
+Sexo: ${profile.sex || "?"}
+Altura: ${profile.heightCm || "?"}cm
+Peso: ${profile.weightKg || "?"}kg
+Objetivo: ${profile.goal || "Saúde geral"}
+Nível: ${profile.experienceLevel || "Iniciante"}
+
+A resposta deve ser em Markdown, organizada com títulos e tópicos, incluindo:
+1. Estimativa de necessidades calóricas diárias (TMB e GCD).
+2. Distribuição sugerida de macronutrientes (Proteínas, Carboidratos e Gorduras).
+3. Exemplos de alimentos recomendados.
+4. Dicas práticas para manter a constância.
+5. Hidratação recomendada.
+
+Seja motivador e profissional.`;
 
     return callGemini(
       [{ role: "user", parts: [{ text: prompt }] }],
-      "Você é um nutricionista esportivo. Responda em português do Brasil."
+      "Você é um nutricionista esportivo especializado em planos personalizados."
     );
   },
 };

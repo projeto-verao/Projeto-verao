@@ -119,13 +119,11 @@ export default function Reminders() {
       setSmartStatus(status);
     } catch (err) {
       console.error("Erro ao verificar status inteligente:", err);
-      throw err;
     }
   }, [user]);
 
   const loadReminders = async () => {
     if (!user) {
-      console.warn("loadReminders: User not available, skipping loading.");
       setLoading(false);
       return;
     }
@@ -141,7 +139,7 @@ export default function Reminders() {
           description: type.description,
           icon: type.id,
           enabled: false,
-          repetitionType: 'daily',
+          repetitionType: 'daily' as const,
           time: '08:00',
           intervalHours: 2,
           daysOfWeek: [1, 2, 3, 4, 5],
@@ -163,7 +161,7 @@ export default function Reminders() {
           description: type.description,
           icon: type.id,
           enabled: false,
-          repetitionType: 'daily',
+          repetitionType: 'daily' as const,
           time: '08:00',
           intervalHours: 2,
           daysOfWeek: [1, 2, 3, 4, 5],
@@ -175,11 +173,7 @@ export default function Reminders() {
       
       setReminders(merged);
       setSelectedProfile("all");
-      try {
-        await checkSmartStatus();
-      } catch (smartStatusError) {
-        console.error("Erro ao verificar status inteligente:", smartStatusError);
-      }
+      await checkSmartStatus();
     } catch (error) {
       console.error("Erro ao carregar lembretes:", error);
       toast.error("Erro ao carregar lembretes");
@@ -190,7 +184,7 @@ export default function Reminders() {
         description: type.description,
         icon: type.id,
         enabled: false,
-        repetitionType: 'daily',
+        repetitionType: 'daily' as const,
         time: '08:00',
         intervalHours: 2,
         daysOfWeek: [1, 2, 3, 4, 5],
@@ -224,13 +218,7 @@ export default function Reminders() {
       toast.success(`${reminder.title} ${newStatus ? 'ativado' : 'desativado'}`);
     } catch (error: any) {
       console.error("Erro ao atualizar lembrete:", id, error);
-      let errorMessage = "Erro desconhecido ao salvar.";
-      if (error.code === 'permission-denied') {
-        errorMessage = "Permissão negada. Verifique as regras do Firestore.";
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-      toast.error(`Erro ao salvar alteração para ${reminder.title}: ${errorMessage}`);
+      toast.error(`Erro ao salvar alteração para ${reminder.title}`);
       setReminders(originalReminders);
     }
   };
@@ -254,32 +242,31 @@ export default function Reminders() {
       toast.error("Usuário não autenticado. Por favor, faça login novamente.");
       return;
     }
-    const updated = [...reminders];
-    const idsToEnable = presetType === 'basic' 
-      ? ['water', 'food_log', 'training_remind']
-      : ['water', 'food_log', 'protein', 'calories', 'training_remind', 'weight', 'evolution_photo'];
-
-    updated.forEach(r => {
+    const updated = reminders.map(r => {
+      const idsToEnable = presetType === 'basic' 
+        ? ['water', 'food_log', 'training_remind']
+        : ['water', 'food_log', 'protein', 'calories', 'training_remind', 'weight', 'evolution_photo'];
+      
       const isEnabledInPreset = idsToEnable.includes(r.id);
-      r.enabled = isEnabledInPreset;
+      const newReminder = { ...r, enabled: isEnabledInPreset };
 
       if (isEnabledInPreset) {
         const defaultType = REMINDER_TYPES.find(type => type.id === r.id);
         if (defaultType) {
-          r.repetitionType = defaultType.repetitionType;
-          r.time = defaultType.time;
-          r.intervalHours = defaultType.intervalHours;
-          r.daysOfWeek = defaultType.daysOfWeek;
-          r.sound = defaultType.sound;
-          r.vibration = defaultType.vibration;
-          r.repeatUntilDone = defaultType.repeatUntilDone;
+          newReminder.repetitionType = defaultType.repetitionType as any;
+          newReminder.time = defaultType.time;
+          newReminder.intervalHours = defaultType.intervalHours;
+          newReminder.daysOfWeek = defaultType.daysOfWeek;
+          newReminder.sound = defaultType.sound;
+          newReminder.vibration = defaultType.vibration;
+          newReminder.repeatUntilDone = defaultType.repeatUntilDone;
         }
       }
+      return newReminder;
     });
 
     try {
       setLoading(true);
-      if (!user) return;
       await firestoreService.saveAllReminders(user.uid, updated);
       setReminders(updated);
       toast.success(`Configuração ${presetType === 'basic' ? 'Básica' : 'Fitness'} aplicada!`);
@@ -326,7 +313,6 @@ export default function Reminders() {
           </div>
 
           <div className="space-y-6">
-            {/* Tipo de Repetição */}
             <div className="space-y-3">
               <label className="text-sm font-bold flex items-center gap-2 px-1">
                 <Calendar size={16} /> Tipo de Repetição
@@ -334,7 +320,7 @@ export default function Reminders() {
               <select
                 value={selectedReminder.repetitionType}
                 onChange={(e) => setSelectedReminder({...selectedReminder, repetitionType: e.target.value as any})}
-                className="app-input"
+                className="w-full bg-gray-100 border-none rounded-xl p-4 text-sm font-medium focus:ring-2 focus:ring-black"
               >
                 {REPETITION_OPTIONS.map(opt => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -342,34 +328,30 @@ export default function Reminders() {
               </select>
             </div>
 
-            {/* Horário */}
             <div className="space-y-3">
               <label className="text-sm font-bold flex items-center gap-2 px-1">
                 <Clock size={16} /> Horário
               </label>
               <input
                 type="time"
-                value={selectedReminder.time || '08:00'}
+                value={selectedReminder.time || "08:00"}
                 onChange={(e) => setSelectedReminder({...selectedReminder, time: e.target.value})}
-                className="app-input"
+                className="w-full bg-gray-100 border-none rounded-xl p-4 text-sm font-medium focus:ring-2 focus:ring-black"
               />
             </div>
 
-            {/* Intervalo (condicional) */}
             {selectedReminder.repetitionType === 'every_x_hours' && (
               <div className="space-y-3">
                 <label className="text-sm font-bold flex items-center gap-2 px-1">
-                  <Clock size={16} /> Intervalo
+                  <Zap size={16} /> Intervalo
                 </label>
-                <div className="flex flex-wrap gap-2">
+                <div className="grid grid-cols-4 gap-2">
                   {HOUR_OPTIONS.map(h => (
                     <button
                       key={h}
                       onClick={() => setSelectedReminder({...selectedReminder, intervalHours: h})}
-                      className={`px-4 py-2 rounded-lg border-2 transition-all ${
-                        selectedReminder.intervalHours === h 
-                          ? "border-black bg-black text-white" 
-                          : "border-gray-300 hover:border-black"
+                      className={`py-3 rounded-xl text-xs font-bold transition-all ${
+                        selectedReminder.intervalHours === h ? "bg-black text-white" : "bg-gray-100 text-gray-500"
                       }`}
                     >
                       {h}h
@@ -379,69 +361,75 @@ export default function Reminders() {
               </div>
             )}
 
-            {/* Dias da Semana (condicional) */}
             {selectedReminder.repetitionType === 'specific_days' && (
               <div className="space-y-3">
                 <label className="text-sm font-bold flex items-center gap-2 px-1">
                   <Calendar size={16} /> Dias da Semana
                 </label>
-                <div className="flex flex-wrap gap-2">
-                  {DAYS.map((day, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => {
-                        const newDays = selectedReminder.daysOfWeek.includes(idx)
-                          ? selectedReminder.daysOfWeek.filter(d => d !== idx)
-                          : [...selectedReminder.daysOfWeek, idx];
-                        setSelectedReminder({...selectedReminder, daysOfWeek: newDays});
-                      }}
-                      className={`px-3 py-2 rounded-lg border-2 transition-all ${
-                        selectedReminder.daysOfWeek.includes(idx)
-                          ? "border-black bg-black text-white"
-                          : "border-gray-300 hover:border-black"
-                      }`}
-                    >
-                      {day}
-                    </button>
-                  ))}
+                <div className="grid grid-cols-7 gap-1">
+                  {DAYS.map((day, idx) => {
+                    const daysOfWeek = selectedReminder.daysOfWeek || [];
+                    const isActive = daysOfWeek.includes(idx);
+                    return (
+                      <button
+                        key={day}
+                        onClick={() => {
+                          const newDays = isActive
+                            ? daysOfWeek.filter(d => d !== idx)
+                            : [...daysOfWeek, idx];
+                          setSelectedReminder({...selectedReminder, daysOfWeek: newDays});
+                        }}
+                        className={`py-3 rounded-lg text-[10px] font-bold transition-all ${
+                          isActive ? "bg-black text-white" : "bg-gray-100 text-gray-500"
+                        }`}
+                      >
+                        {day}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
 
-            {/* Som e Vibração */}
-            <div className="grid grid-cols-2 gap-3">
-              <button 
-                onClick={() => setSelectedReminder({...selectedReminder, sound: !selectedReminder.sound})}
-                className={`p-3 rounded-lg border-2 transition-all flex items-center justify-center gap-2 ${
-                  selectedReminder.sound 
-                    ? "border-black bg-black text-white" 
-                    : "border-gray-300 hover:border-black"
-                }`}
-              >
-                <Volume2 size={16} />
-                <span className="text-sm font-semibold">Som</span>
-              </button>
-              <button 
-                onClick={() => setSelectedReminder({...selectedReminder, vibration: !selectedReminder.vibration})}
-                className={`p-3 rounded-lg border-2 transition-all flex items-center justify-center gap-2 ${
-                  selectedReminder.vibration 
-                    ? "border-black bg-black text-white" 
-                    : "border-gray-300 hover:border-black"
-                }`}
-              >
-                <Vibrate size={16} />
-                <span className="text-sm font-semibold">Vibração</span>
-              </button>
-            </div>
+            <div className="bg-gray-50 rounded-2xl p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-gray-400">
+                    <Volume2 size={16} />
+                  </div>
+                  <span className="text-sm font-bold">Som</span>
+                </div>
+                <button 
+                  onClick={() => setSelectedReminder({...selectedReminder, sound: !selectedReminder.sound})}
+                  className={`w-12 h-6 rounded-full transition-all relative ${selectedReminder.sound ? "bg-black" : "bg-gray-300"}`}
+                >
+                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${selectedReminder.sound ? "right-1" : "left-1"}`} />
+                </button>
+              </div>
 
-            {/* Salvar */}
-            <button
-              onClick={() => saveConfig(selectedReminder)}
-              className="w-full bg-black text-white py-3 rounded-lg font-semibold hover:bg-gray-800 transition-colors"
-            >
-              Salvar Configuração
-            </button>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-gray-400">
+                    <Vibrate size={16} />
+                  </div>
+                  <span className="text-sm font-bold">Vibração</span>
+                </div>
+                <button 
+                  onClick={() => setSelectedReminder({...selectedReminder, vibration: !selectedReminder.vibration})}
+                  className={`w-12 h-6 rounded-full transition-all relative ${selectedReminder.vibration ? "bg-black" : "bg-gray-300"}`}
+                >
+                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${selectedReminder.vibration ? "right-1" : "left-1"}`} />
+                </button>
+              </div>
+            </div>
           </div>
+
+          <button 
+            onClick={() => saveConfig(selectedReminder)}
+            className="fixed bottom-24 left-6 right-6 bg-black text-white py-4 rounded-2xl font-bold shadow-xl flex items-center justify-center gap-2"
+          >
+            SALVAR CONFIGURAÇÃO
+          </button>
         </div>
       </AppLayout>
     );
@@ -450,86 +438,103 @@ export default function Reminders() {
   return (
     <AppLayout>
       <div className="p-4 pb-24">
-        <header className="mb-8">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 rounded-full bg-black flex items-center justify-center text-white">
-              <Bell size={20} />
-            </div>
-            <h1 className="text-2xl font-bold">Lembretes</h1>
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-2xl font-black tracking-tight">LEMBRETES</h1>
+            <p className="text-sm text-gray-500">Mantenha o foco nos seus objetivos</p>
           </div>
-          <p className="text-gray-500">Gerencie suas notificações e hábitos diários.</p>
-        </header>
-
-        {/* Quick Config */}
-        <div className="flex flex-wrap gap-2 mb-6">
-          <button 
-            onClick={() => {setSelectedProfile("basic"); applyPreset("basic");}}
-            className={`app-card flex-1 p-4 flex flex-col items-center justify-center space-y-2 text-center ${selectedProfile === "basic" ? "border-2 border-black bg-gray-50" : ""}`}
-          >
-            <Zap size={20} />
-            <span className="font-semibold">Básico</span>
-            <p className="text-xs text-gray-500">Água, Alimentação e Treino</p>
-          </button>
-          <button 
-            onClick={() => {setSelectedProfile("fitness"); applyPreset("fitness");}}
-            className={`app-card flex-1 p-4 flex flex-col items-center justify-center space-y-2 text-center ${selectedProfile === "fitness" ? "border-2 border-black bg-gray-50" : ""}`}
-          >
-            <Sparkles size={20} />
-            <span className="font-semibold">Fitness</span>
-            <p className="text-xs text-gray-500">Tudo para performance</p>
-          </button>
-          <button 
-            onClick={() => {setSelectedProfile("all");}}
-            className={`app-card flex-1 p-4 flex flex-col items-center justify-center space-y-2 text-center ${selectedProfile === "all" ? "border-2 border-black bg-gray-50" : ""}`}
-          >
-            <Bell size={20} />
-            <span className="font-semibold">Todos</span>
-            <p className="text-xs text-gray-500">Ver todos os lembretes</p>
-          </button>
+          <div className="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center text-black">
+            <Bell size={24} />
+          </div>
         </div>
 
-        {selectedProfile === "basic" && <h2 className="text-lg font-bold mb-4">Lembretes do Perfil Básico</h2>}
-        {selectedProfile === "fitness" && <h2 className="text-lg font-bold mb-4">Lembretes do Perfil Fitness</h2>}
-        {selectedProfile === "all" && <h2 className="text-lg font-bold mb-4">Todos os Lembretes</h2>}
+        <div className="bg-black rounded-3xl p-6 mb-8 text-white relative overflow-hidden">
+          <div className="relative z-10">
+            <h3 className="text-lg font-bold mb-2 flex items-center gap-2">
+              <Sparkles size={18} className="text-yellow-400" /> Configuração Rápida
+            </h3>
+            <p className="text-xs text-gray-400 mb-6 leading-relaxed">
+              Ative conjuntos de lembretes otimizados para seu nível de comprometimento.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <button 
+                onClick={() => applyPreset('basic')}
+                className="bg-white/10 hover:bg-white/20 py-3 rounded-xl text-xs font-bold transition-all border border-white/10"
+              >
+                BÁSICO
+              </button>
+              <button 
+                onClick={() => applyPreset('fitness')}
+                className="bg-orange-500 hover:bg-orange-600 py-3 rounded-xl text-xs font-bold transition-all shadow-lg shadow-orange-900/20"
+              >
+                FITNESS PRO
+              </button>
+            </div>
+          </div>
+          <div className="absolute -right-8 -bottom-8 opacity-10">
+            <Bell size={120} />
+          </div>
+        </div>
 
         <div className="space-y-4">
-          {filteredReminders.map(reminder => {
-            const Icon = REMINDER_TYPES.find(t => t.id === reminder.id)?.icon || Bell;
-            const isSmart = smartStatus[reminder.id];
-
+          {filteredReminders.map((reminder) => {
+            const type = REMINDER_TYPES.find(t => t.id === reminder.id);
+            const Icon = type?.icon || Bell;
+            const isSmartDone = smartStatus[reminder.id];
+            
             return (
-              <div key={reminder.id} className="app-card flex items-center justify-between p-4">
-                <div className="flex items-center gap-4">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${reminder.enabled ? "bg-black text-white" : "bg-gray-100 text-gray-500"}`}>
-                    <Icon size={20} />
+              <div 
+                key={reminder.id}
+                className={`bg-white rounded-3xl p-5 shadow-sm border border-gray-100 transition-all ${reminder.enabled ? "opacity-100" : "opacity-60"}`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center bg-gray-50 ${type?.color || "text-gray-400"}`}>
+                      <Icon size={24} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-bold text-gray-900">{reminder.title}</h3>
+                        {isSmartDone && (
+                          <span className="bg-green-100 text-green-600 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                            <CheckCircle2 size={10} /> Concluído
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-500 mt-0.5">{reminder.description}</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-semibold text-base">{reminder.title}</h3>
-                    <p className="text-xs text-gray-500">{reminder.description}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {isSmart && reminder.enabled && (
-                    <span className="text-xs text-green-600 font-medium">META ATINGIDA</span>
-                  )}
-                  <button
+                  <button 
                     onClick={() => toggleReminder(reminder.id)}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${reminder.enabled ? "bg-black" : "bg-gray-200"}`}
+                    className={`w-12 h-6 rounded-full transition-all relative ${reminder.enabled ? "bg-black" : "bg-gray-300"}`}
                   >
-                    <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${reminder.enabled ? "translate-x-6" : "translate-x-1"}`}
-                    />
-                  </button>
-                  <button
-                    onClick={() => {
-                      setSelectedReminder(reminder);
-                      setIsConfiguring(true);
-                    }}
-                    className="text-gray-400 hover:text-black transition-colors"
-                  >
-                    <ChevronRight size={20} />
+                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${reminder.enabled ? "right-1" : "left-1"}`} />
                   </button>
                 </div>
+                
+                {reminder.enabled && (
+                  <div className="mt-4 pt-4 border-t border-gray-50 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                        <Clock size={12} /> {reminder.time}
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                        <Calendar size={12} /> {
+                          REPETITION_OPTIONS.find(o => o.value === reminder.repetitionType)?.label || "Diário"
+                        }
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => {
+                        setSelectedReminder({...reminder});
+                        setIsConfiguring(true);
+                      }}
+                      className="text-xs font-bold text-black flex items-center gap-1 hover:underline"
+                    >
+                      Configurar <ChevronRight size={14} />
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })}

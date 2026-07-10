@@ -692,7 +692,7 @@ export default function IATrainer() {
                                 try {
                                   await firestoreService.deleteWorkout(user.uid, version.id);
                                   toast.success("Versão excluída!");
-                                  loadWorkouts();
+                                  loadVersions();
                                 } catch (err) {
                                   toast.error("Erro ao excluir.");
                                 }
