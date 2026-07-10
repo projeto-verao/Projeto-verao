@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import AppLayout from "@/components/AppLayout";
 import { useAuth } from "@/contexts/AuthContext";
-import { firestoreService, ReminderConfig, MealEntry, BodyProgressEntry, WorkoutCompletionEntry } from "@/hooks/useFirebaseFirestore";
+import { firestoreService, ReminderConfig } from "@/hooks/useFirebaseFirestore";
 import { 
   Bell, 
   Droplets, 
@@ -17,8 +17,6 @@ import {
   Pill, 
   CheckCircle2,
   ChevronRight,
-  Settings2,
-  Zap,
   Clock,
   Calendar,
   Volume2,
@@ -61,26 +59,75 @@ export default function Reminders() {
   const [loading, setLoading] = useState(true);
   const [selectedReminder, setSelectedReminder] = useState<ReminderConfig | null>(null);
   const [isConfiguring, setIsConfiguring] = useState(false);
-  const [selectedProfile, setSelectedProfile] = useState<'all' | 'basic' | 'fitness' | 'none'>('none');
+  const [selectedProfile, setSelectedProfile] = useState<'basic' | 'fitness'>('basic');
+  const [smartStatus, setSmartStatus] = useState<Record<string, boolean>>({});
+  
+  const initialLoadDone = useRef(false);
 
   const basicRemindersIds = ['water', 'food_log', 'training_remind'];
   const fitnessRemindersIds = ['water', 'food_log', 'protein', 'calories', 'training_remind', 'weight', 'evolution_photo'];
 
   const filteredReminders = reminders.filter(reminder => {
-    if (selectedProfile === 'all') return true;
     if (selectedProfile === 'basic') return basicRemindersIds.includes(reminder.id);
     if (selectedProfile === 'fitness') return fitnessRemindersIds.includes(reminder.id);
-    return true;
+    return false;
   });
 
+  // ── Sincronização em Tempo Real ───────────────────────────────────────────
   useEffect(() => {
-    if (user) {
-      loadReminders();
+    if (!user) {
+      setLoading(false);
+      return;
     }
-  }, [user]);
 
-  // ── Inteligência de Lembretes ───────────────────────────────────────────
-  const [smartStatus, setSmartStatus] = useState<Record<string, boolean>>({});
+    const unsubscribe = firestoreService.subscribeToReminders(user.uid, (configs) => {
+      if (configs.length === 0 && !initialLoadDone.current) {
+        // Inicializar com padrões se estiver vazio
+        const defaultReminders = REMINDER_TYPES.map(type => ({
+          id: type.id,
+          type: type.id,
+          title: type.title,
+          description: type.description,
+          icon: type.id,
+          enabled: false,
+          repetitionType: 'daily' as const,
+          time: '08:00',
+          intervalHours: 2,
+          daysOfWeek: [1, 2, 3, 4, 5],
+          sound: true,
+          vibration: true,
+          repeatUntilDone: false
+        })) as ReminderConfig[];
+        firestoreService.saveAllReminders(user.uid, defaultReminders);
+      } else {
+        // Mesclar com tipos definidos para garantir que todos existam na UI
+        const merged = REMINDER_TYPES.map(type => {
+          const existing = configs.find(c => c.id === type.id);
+          if (existing) return existing;
+          return {
+            id: type.id,
+            type: type.id,
+            title: type.title,
+            description: type.description,
+            icon: type.id,
+            enabled: false,
+            repetitionType: 'daily' as const,
+            time: '08:00',
+            intervalHours: 2,
+            daysOfWeek: [1, 2, 3, 4, 5],
+            sound: true,
+            vibration: true,
+            repeatUntilDone: false
+          } as ReminderConfig;
+        });
+        setReminders(merged);
+        setLoading(false);
+        initialLoadDone.current = true;
+      }
+    });
+
+    return () => unsubscribe();
+  }, [user]);
 
   const checkSmartStatus = useCallback(async () => {
     if (!user) return;
@@ -122,104 +169,25 @@ export default function Reminders() {
     }
   }, [user]);
 
-  const loadReminders = async () => {
-    if (!user) {
-      setLoading(false);
-      return;
+  useEffect(() => {
+    if (user) {
+      checkSmartStatus();
     }
-    try {
-      const configs = await firestoreService.getReminderConfigs(user.uid);
-      
-      let finalConfigs = configs;
-      if (configs.length === 0) {
-        const defaultReminders = REMINDER_TYPES.map(type => ({
-          id: type.id,
-          type: type.id,
-          title: type.title,
-          description: type.description,
-          icon: type.id,
-          enabled: false,
-          repetitionType: 'daily' as const,
-          time: '08:00',
-          intervalHours: 2,
-          daysOfWeek: [1, 2, 3, 4, 5],
-          sound: true,
-          vibration: true,
-          repeatUntilDone: false
-        })) as ReminderConfig[];
-        await firestoreService.saveAllReminders(user.uid, defaultReminders);
-        finalConfigs = defaultReminders;
-      }
-
-      const merged = REMINDER_TYPES.map(type => {
-        const existing = finalConfigs.find(c => c.id === type.id);
-        if (existing) return existing;
-        return {
-          id: type.id,
-          type: type.id,
-          title: type.title,
-          description: type.description,
-          icon: type.id,
-          enabled: false,
-          repetitionType: 'daily' as const,
-          time: '08:00',
-          intervalHours: 2,
-          daysOfWeek: [1, 2, 3, 4, 5],
-          sound: true,
-          vibration: true,
-          repeatUntilDone: false
-        } as ReminderConfig;
-      });
-      
-      setReminders(merged);
-      setSelectedProfile("all");
-      await checkSmartStatus();
-    } catch (error) {
-      console.error("Erro ao carregar lembretes:", error);
-      toast.error("Erro ao carregar lembretes");
-      setReminders(REMINDER_TYPES.map(type => ({
-        id: type.id,
-        type: type.id,
-        title: type.title,
-        description: type.description,
-        icon: type.id,
-        enabled: false,
-        repetitionType: 'daily' as const,
-        time: '08:00',
-        intervalHours: 2,
-        daysOfWeek: [1, 2, 3, 4, 5],
-        sound: true,
-        vibration: true,
-        repeatUntilDone: false
-      })) as ReminderConfig[]);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [user, checkSmartStatus]);
 
   const toggleReminder = async (id: string) => {
     const reminder = reminders.find(r => r.id === id);
-    if (!reminder) return;
+    if (!reminder || !user) return;
 
-    const originalReminders = [...reminders];
     const newStatus = !reminder.enabled;
-    const updatedReminders = reminders.map(r => 
-      r.id === id ? { ...r, enabled: newStatus } : r
-    );
-    setReminders(updatedReminders);
-
+    
     try {
-      if (!user) {
-        toast.error("Usuário não autenticado.");
-        setReminders(originalReminders);
-        return;
-      }
-      await firestoreService.updateReminderConfig(user.uid, updatedReminders.find(r => r.id === id)!);
+      // Otimista: a UI vai atualizar via onSnapshot, mas podemos forçar localmente se quisermos
+      await firestoreService.updateReminderConfig(user.uid, { id, enabled: newStatus });
       toast.success(`${reminder.title} ${newStatus ? 'ativado' : 'desativado'}`);
     } catch (error: any) {
       console.error("Erro ao atualizar lembrete:", id, error);
       toast.error(`Erro ao salvar alteração para ${reminder.title}`);
-      setReminders(originalReminders);
     }
   };
 
@@ -227,7 +195,6 @@ export default function Reminders() {
     try {
       if (!user) return;
       await firestoreService.updateReminderConfig(user.uid, config);
-      setReminders(reminders.map(r => r.id === config.id ? config : r));
       setIsConfiguring(false);
       setSelectedReminder(null);
       toast.success("Configuração salva!");
@@ -239,14 +206,15 @@ export default function Reminders() {
 
   const applyPreset = async (presetType: 'basic' | 'fitness') => {
     if (!user) {
-      toast.error("Usuário não autenticado. Por favor, faça login novamente.");
+      toast.error("Usuário não autenticado.");
       return;
     }
+    
+    const idsToEnable = presetType === 'basic' 
+      ? basicRemindersIds
+      : fitnessRemindersIds;
+
     const updated = reminders.map(r => {
-      const idsToEnable = presetType === 'basic' 
-        ? ['water', 'food_log', 'training_remind']
-        : ['water', 'food_log', 'protein', 'calories', 'training_remind', 'weight', 'evolution_photo'];
-      
       const isEnabledInPreset = idsToEnable.includes(r.id);
       const newReminder = { ...r, enabled: isEnabledInPreset };
 
@@ -268,7 +236,6 @@ export default function Reminders() {
     try {
       setLoading(true);
       await firestoreService.saveAllReminders(user.uid, updated);
-      setReminders(updated);
       toast.success(`Configuração ${presetType === 'basic' ? 'Básica' : 'Fitness'} aplicada!`);
     } catch (error) {
       toast.error("Erro ao aplicar configuração rápida");
@@ -343,7 +310,7 @@ export default function Reminders() {
             {selectedReminder.repetitionType === 'every_x_hours' && (
               <div className="space-y-3">
                 <label className="text-sm font-bold flex items-center gap-2 px-1">
-                  <Zap size={16} /> Intervalo
+                  <Sparkles size={16} /> Intervalo
                 </label>
                 <div className="grid grid-cols-4 gap-2">
                   {HOUR_OPTIONS.map(h => (
@@ -446,6 +413,22 @@ export default function Reminders() {
           <div className="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center text-black">
             <Bell size={24} />
           </div>
+        </div>
+
+        {/* Abas de Categoria */}
+        <div className="flex gap-2 mb-6 bg-gray-100 p-1.5 rounded-2xl">
+          <button 
+            onClick={() => setSelectedProfile('basic')}
+            className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${selectedProfile === 'basic' ? "bg-white text-black shadow-sm" : "text-gray-500"}`}
+          >
+            BÁSICO
+          </button>
+          <button 
+            onClick={() => setSelectedProfile('fitness')}
+            className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${selectedProfile === 'fitness' ? "bg-white text-black shadow-sm" : "text-gray-500"}`}
+          >
+            FITNESS
+          </button>
         </div>
 
         <div className="bg-black rounded-3xl p-6 mb-8 text-white relative overflow-hidden">

@@ -13,6 +13,7 @@ import {
   limit as fsLimit,
   Timestamp,
   writeBatch,
+  onSnapshot,
 } from "firebase/firestore";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -436,6 +437,14 @@ export const firestoreService = {
     const q = query(colRef);
     const snapshot = await getDocs(q);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ReminderConfig));
+  },
+
+  subscribeToReminders(userId: string, callback: (configs: ReminderConfig[]) => void) {
+    const colRef = userCol(userId, "reminders");
+    return onSnapshot(colRef, (snapshot) => {
+      const configs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ReminderConfig));
+      callback(configs);
+    });
   },
 
   async saveAllReminders(userId: string, configs: ReminderConfig[]) {

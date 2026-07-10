@@ -65,6 +65,9 @@ service cloud.firestore {
       match /meta/{metaId} {
         allow read, write: if isOwner(userId);
       }
+      match /reminders/{reminderId} {
+        allow read, write: if isOwner(userId);
+      }
     }
     
     // ─── Deny Everything Else ───────────────────────────────────────────────
