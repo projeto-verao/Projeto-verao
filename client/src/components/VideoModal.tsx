@@ -87,6 +87,7 @@ export default function VideoModal({ exerciseName, userId, onClose }: VideoModal
   };
 
   const getEmbedUrl = (url: string) => {
+    if (url.includes("youtube.com/results")) return null; // Não é embeddable
     if (url.includes("youtube.com/watch?v=")) {
       return url.replace("watch?v=", "embed/");
     }
@@ -95,6 +96,8 @@ export default function VideoModal({ exerciseName, userId, onClose }: VideoModal
     }
     return url;
   };
+
+  const embedUrl = video ? getEmbedUrl(video.videoUrl) : null;
 
   return (
     <div className="fixed inset-0 z-[150] bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-300">
@@ -117,13 +120,28 @@ export default function VideoModal({ exerciseName, userId, onClose }: VideoModal
             </div>
           ) : video ? (
             <div className="space-y-6">
-              <div className="aspect-video bg-black rounded-2xl overflow-hidden shadow-lg border border-gray-200">
-                <iframe
-                  src={getEmbedUrl(video.videoUrl)}
-                  className="w-full h-full"
-                  allowFullScreen
-                  title={exerciseName}
-                />
+              <div className="aspect-video bg-black rounded-2xl overflow-hidden shadow-lg border border-gray-200 flex items-center justify-center">
+                {embedUrl ? (
+                  <iframe
+                    src={embedUrl}
+                    className="w-full h-full"
+                    allowFullScreen
+                    title={exerciseName}
+                  />
+                ) : (
+                  <div className="text-center p-8 space-y-4">
+                    <Play size={48} className="text-orange-500 mx-auto opacity-50" />
+                    <p className="text-sm font-bold text-white uppercase tracking-widest">Vídeo encontrado!</p>
+                    <a 
+                      href={video.videoUrl} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="inline-block bg-orange-500 text-white px-6 py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-orange-600 transition-all active:scale-95"
+                    >
+                      Assistir no YouTube
+                    </a>
+                  </div>
+                )}
               </div>
 
               {!rated && !showFeedback && (

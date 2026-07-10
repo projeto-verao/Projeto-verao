@@ -467,8 +467,14 @@ Seja motivador e profissional.`;
    * Localiza um vídeo demonstrativo no YouTube para um exercício.
    */
   async searchExerciseVideo(exerciseName: string): Promise<{ videoUrl: string; language: string }> {
-    const prompt = `Você é um especialista em fitness. Localize um link de vídeo demonstrativo de alta qualidade no YouTube para o exercício: "${exerciseName}".
-    Priorize vídeos em Português (Brasil) que mostrem a execução correta e técnica.
+    const prompt = `Você é um especialista em fitness e biomecânica. 
+    Sua tarefa é fornecer uma URL REAL E FUNCIONAL do YouTube que demonstre a execução correta do exercício: "${exerciseName}".
+    
+    REGRAS CRUCIAIS:
+    1. A URL deve ser de um vídeo que realmente existe. 
+    2. Priorize canais grandes e confiáveis de fitness no Brasil (ex: Renato Cariani, Paulo Muzy, Leandro Twin, Laércio Refundini).
+    3. Tente fornecer o link no formato padrão: https://www.youtube.com/watch?v=ID_DO_VIDEO
+    4. Se você não tiver certeza absoluta de que o link existe, NÃO invente um ID aleatório. Tente usar um link que você sabe que é estável.
     
     Retorne APENAS um JSON no formato:
     {
@@ -495,7 +501,11 @@ Seja motivador e profissional.`;
     
     if (!isValidYoutubeUrl) {
       console.warn(`URL retornada não é do YouTube: ${result.videoUrl}`);
-      throw new Error(`A IA retornou uma URL inválida. Esperado: YouTube, Recebido: ${result.videoUrl}`);
+      // Fallback: Se a IA não der um link direto, geramos um link de pesquisa
+      return {
+        videoUrl: `https://www.youtube.com/results?search_query=${encodeURIComponent(exerciseName + " execução correta")}`,
+        language: "pt-BR"
+      };
     }
     
     return result;
