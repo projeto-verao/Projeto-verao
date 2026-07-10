@@ -291,6 +291,19 @@ export default function Dashboard() {
     return () => { if (timerIntervalRef.current) clearInterval(timerIntervalRef.current); };
   }, [restTimer]);
 
+  // ── Scroll automático para o topo ao selecionar um dia ────────────────────
+  const handleSelectDay = (dayNumber: number) => {
+    const newSelectedDay = selectedDay === dayNumber ? null : dayNumber;
+    setSelectedDay(newSelectedDay);
+    
+    // Se um novo dia foi selecionado, fazer scroll para o topo
+    if (newSelectedDay !== null) {
+      setTimeout(() => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }, 0);
+    }
+  };
+
   const toggleSet = (dayNumber: number, exerciseIdx: number, setIdx: number, restTime: string) => {
     const key = `${dayNumber}-${exerciseIdx}-${setIdx}`;
     const isNowCompleted = !completedSets[key];
@@ -516,7 +529,7 @@ export default function Dashboard() {
               <div key={day.dayNumber} className={`bg-white border transition-all duration-300 rounded-[32px] p-5 shadow-sm ${selectedDay === day.dayNumber ? "border-black ring-1 ring-black" : "border-gray-100"}`}>
                 <div
                   className="flex items-center justify-between cursor-pointer"
-                  onClick={() => setSelectedDay(selectedDay === day.dayNumber ? null : day.dayNumber)}
+                  onClick={() => handleSelectDay(day.dayNumber)}
                 >
                   <div className="flex items-center gap-4">
                     <div className="w-14 h-14 rounded-2xl bg-gray-50 flex items-center justify-center text-3xl shadow-inner">
