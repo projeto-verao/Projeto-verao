@@ -54,9 +54,13 @@ export default function Dashboard() {
   // Efeito para resetar o scroll ao selecionar um dia de treino
   useEffect(() => {
     if (selectedDay !== null) {
+      // O container real de scroll da aplicação é o .app-content definido no AppLayout/index.css
       const scrollContainer = document.querySelector('.app-content');
       if (scrollContainer) {
-        scrollContainer.scrollTo({ top: 0, behavior: 'smooth' });
+        // Usando instatâneo (behavior: 'auto') para garantir que o usuário veja o topo imediatamente
+        // e resetando explicitamente o scrollTop para garantir compatibilidade
+        scrollContainer.scrollTop = 0;
+        scrollContainer.scrollTo({ top: 0, behavior: 'auto' });
       }
     }
   }, [selectedDay]);
