@@ -72,7 +72,10 @@ export interface ExerciseVideo {
   exerciseName: string;
   muscleGroup?: string;
   equipment?: string;
+  videoId: string; // YouTube Video ID
   videoUrl: string;
+  videoTitle?: string;
+  channelTitle?: string;
   language: string;
   likes: number;
   dislikes: number;
@@ -347,11 +350,11 @@ export const firestoreService = {
     }
   },
 
-  async updateVideoUrl(exerciseId: string, newUrl: string, backupUrl?: string): Promise<void> {
+  async updateVideoUrl(exerciseId: string, newVideoData: Partial<ExerciseVideo>, oldUrl: string): Promise<void> {
     const videoRef = doc(db, "exerciseVideos", exerciseId);
     await updateDoc(videoRef, {
-      videoUrl: newUrl,
-      backupVideoUrl: backupUrl,
+      ...newVideoData,
+      backupVideoUrl: oldUrl,
       likes: 0,
       dislikes: 0,
       totalRatings: 0,

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { X, ThumbsUp, ThumbsDown, Loader2, Play, AlertCircle } from "lucide-react";
 import { firestoreService, ExerciseVideo } from "@/hooks/useFirebaseFirestore";
-import { geminiService } from "@/lib/gemini";
+import { youtubeService } from "@/lib/youtubeService";
 import { toast } from "sonner";
 
 interface VideoModalProps {
@@ -19,21 +19,32 @@ export default function VideoModal({ exerciseName, userId, onClose }: VideoModal
   const loadVideo = async () => {
     setLoading(true);
     try {
-      // 1. Verificar biblioteca local (Firestore)
+      // 1. Verificar biblioteca local (Firestore) - SEMPRE PRIMEIRO
       let videoData = await firestoreService.getExerciseVideo(exerciseName);
       
-      // 2. Se não existir, IA pesquisa e salva
+      // 2. Se não existir, pesquisar via YouTube API
       if (!videoData) {
-        const searchResult = await geminiService.searchExerciseVideo(exerciseName);
+        const searchResult = await youtubeService.searchExerciseVideo(exerciseName);
+        
+        if (!searchResult) {
+          throw new Error(`Nenhum vídeo encontrado para: ${exerciseName}`);
+        }
+
+        // Salvar no Firestore para cache
         await firestoreService.saveExerciseVideo({
           exerciseName,
+          videoId: searchResult.videoId,
           videoUrl: searchResult.videoUrl,
-          language: searchResult.language,
+          videoTitle: searchResult.title,
+          channelTitle: searchResult.channelTitle,
+          language: "pt-BR",
           likes: 0,
           dislikes: 0,
           totalRatings: 0,
           ratingAverage: 0
         });
+        
+        // Recuperar do Firestore para garantir os timestamps
         videoData = await firestoreService.getExerciseVideo(exerciseName);
       }
       
@@ -52,7 +63,6 @@ export default function VideoModal({ exerciseName, userId, onClose }: VideoModal
 
   const handleRate = async (isUseful: boolean, reason?: string) => {
     if (!video) return;
-    // Permitir múltiplas chamadas se o usuário está selecionando um motivo
     if (rated && !reason) return;
     try {
       await firestoreService.rateExerciseVideo(userId, video.id, isUseful, reason);
@@ -66,10 +76,24 @@ export default function VideoModal({ exerciseName, userId, onClose }: VideoModal
           const dislikeRatio = updatedVideo.dislikes / updatedVideo.totalRatings;
           if (dislikeRatio > 0.2) {
             console.log("Iniciando substituição automática de vídeo mal avaliado...");
-            const newSearch = await geminiService.searchExerciseVideo(exerciseName);
-            if (newSearch.videoUrl !== updatedVideo.videoUrl) {
-              await firestoreService.updateVideoUrl(updatedVideo.id, newSearch.videoUrl, updatedVideo.videoUrl);
-              toast.info("A IA localizou um vídeo melhor para este exercício!");
+            const alternatives = await youtubeService.searchAlternativeVideos(
+              exerciseName,
+              updatedVideo.videoId
+            );
+            
+            if (alternatives.length > 0) {
+              const newVideo = alternatives[0];
+              await firestoreService.updateVideoUrl(
+                updatedVideo.id,
+                {
+                  videoId: newVideo.videoId,
+                  videoUrl: newVideo.videoUrl,
+                  videoTitle: newVideo.title,
+                  channelTitle: newVideo.channelTitle,
+                },
+                updatedVideo.videoUrl
+              );
+              toast.info("Encontramos um vídeo melhor para este exercício!");
               loadVideo();
             }
           }
@@ -87,7 +111,7 @@ export default function VideoModal({ exerciseName, userId, onClose }: VideoModal
   };
 
   const getEmbedUrl = (url: string) => {
-    if (url.includes("youtube.com/results")) return null; // Não é embeddable
+    if (url.includes("youtube.com/results")) return null;
     if (url.includes("youtube.com/watch?v=")) {
       return url.replace("watch?v=", "embed/");
     }
@@ -143,6 +167,13 @@ export default function VideoModal({ exerciseName, userId, onClose }: VideoModal
                   </div>
                 )}
               </div>
+
+              {video.videoTitle && (
+                <div className="text-center">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Vídeo: {video.videoTitle}</p>
+                  <p className="text-xs text-gray-400">Canal: {video.channelTitle}</p>
+                </div>
+              )}
 
               {!rated && !showFeedback && (
                 <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100 text-center">
