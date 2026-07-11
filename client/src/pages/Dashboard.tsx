@@ -435,10 +435,10 @@ export default function Dashboard() {
       const days = activeWorkout.days || [];
       const allDaysInWorkout = days.map(d => d.dayNumber).sort((a, b) => a - b);
       
-      // Dias concluídos após loadData (que atualiza completedDaysSet)
+      // Dias concluídos após loadData (que atualiza weekCompletions)
       // Precisamos verificar quais dias estão concluídos no ciclo
       const completedSet = new Set<number>();
-      completions.forEach((c: WorkoutCompletionEntry) => completedSet.add(c.day));
+      weekCompletions.forEach((c: WorkoutCompletionEntry) => completedSet.add(c.day));
       
       // Encontrar o primeiro dia na sequência que NÃO foi concluído
       const pendingDayNumber = allDaysInWorkout.find(d => !completedSet.has(d));
