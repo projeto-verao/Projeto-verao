@@ -8,7 +8,8 @@ import {
   Utensils, Target, RefreshCw, Loader2, ChevronRight, Timer, X, Sparkles, Activity, Trash2, CheckCircle2, Play, Trophy, Info, Weight, AlertTriangle, TrendingDown, Award, AlertCircle
 } from "lucide-react";
 import { toast } from "sonner";
-import { Timestamp } from "firebase/firestore";
+import { Timestamp, collection, getDocs, query, orderBy, limit } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import VideoModal from "@/components/VideoModal";
 
 export default function Dashboard() {
@@ -37,8 +38,8 @@ export default function Dashboard() {
   const [completedDaysSet, setCompletedDaysSet] = useState<Set<number>>(new Set());
   // Completions da semana para calcular próximo treino pendente
   const [weekCompletions, setWeekCompletions] = useState<WorkoutCompletionEntry[]>([]);
-  // currentWeek é calculado dinamicamente pelo número da semana ISO
-  const currentWeek = dateHelpers.getCurrentWeekNumber();
+  // userWeekNumber: semana individual do usuário (calculada pela data do primeiro treino)
+  const [userWeekNumber, setUserWeekNumber] = useState<number>(1);
   const [confirmDelete, setConfirmDelete] = useState(false);
   
   // ── Estados do Cronômetro de Treino ────────────────────────────────────────
@@ -78,6 +79,29 @@ export default function Dashboard() {
   const target = profile?.daysPerWeek || 4;
 
   // ── Carregar treino ativo e persistência do cronômetro ─────────────────────
+  // ── Função para calcular a semana individual do usuário ────────────────────
+  const calculateUserWeekNumber = async (userId: string): Promise<number> => {
+    // Buscar a primeira completion do usuário (todas, não só da semana atual)
+    const q = query(
+      collection(db, "users", userId, "completions"),
+      orderBy("createdAt", "asc"),
+      limit(1)
+    );
+    const snap = await getDocs(q);
+    if (snap.empty) return 1; // Sem completions → semana 1
+
+    const firstCompletion = snap.docs[0].data() as WorkoutCompletionEntry;
+    const firstDate = firstCompletion.createdAt.toMillis();
+
+    // Calcular diferença em semanas a partir da primeira completion
+    const now = Date.now();
+    const diffMs = now - firstDate;
+    const diffDays = Math.floor(diffMs / 86400000);
+    const diffWeeks = Math.floor(diffDays / 7);
+
+    return diffWeeks + 1; // Semana 1 é a semana de início
+  };
+
   const loadData = useCallback(async () => {
     if (!user) return;
     setWorkoutLoading(true);
@@ -90,6 +114,10 @@ export default function Dashboard() {
       setActiveWorkout(workout);
       setWeekCompleted(completions.length);
       setWeekCompletions(completions);
+
+      // Calcular semana individual do usuário
+      const weekNum = await calculateUserWeekNumber(user.uid);
+      setUserWeekNumber(weekNum);
 
       // Construir conjunto de dias concluídos no ciclo atual (deduplicados por dayNumber)
       const daysSet = new Set<number>();
@@ -735,7 +763,7 @@ export default function Dashboard() {
             <div className="flex justify-between items-end mb-4">
               <div>
                 <h3 className="text-xs font-bold text-white/50 uppercase tracking-widest mb-1">Progresso Semanal</h3>
-                <p className="text-2xl font-black">SEMANA {currentWeek}</p>
+                <p className="text-2xl font-black">{userWeekNumber === 1 && weekCompleted === 0 ? "SEMANA 1" : `SEMANA ${userWeekNumber}`}</p>
               </div>
               <span className="text-orange-500 font-black text-xl">{completedDaysSet.size}/{days.length}</span>
             </div>
