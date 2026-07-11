@@ -112,13 +112,21 @@ export default function VideoModal({ exerciseName, userId, onClose }: VideoModal
 
   const getEmbedUrl = (url: string) => {
     if (url.includes("youtube.com/results")) return null;
+    let embed = "";
     if (url.includes("youtube.com/watch?v=")) {
-      return url.replace("watch?v=", "embed/");
+      embed = url.replace("watch?v=", "embed/");
+    } else if (url.includes("youtu.be/")) {
+      embed = url.replace("youtu.be/", "youtube.com/embed/");
+    } else {
+      return url;
     }
-    if (url.includes("youtu.be/")) {
-      return url.replace("youtu.be/", "youtube.com/embed/");
-    }
-    return url;
+    // Forçar: mutado, autoplay, sem controles de volume, sem barra de progresso (hide annotations), sem informações do canal
+    // mute=1 → inicia sem áudio
+    // enablejsapi=1 → permite controle via JavaScript
+    // disablekb=1 → desabilita atalhos de teclado (incluindo volume)
+    // controls=1 → mantém play/pausa/tela cheia, mas sem volume
+    const separator = embed.includes("?") ? "&" : "?";
+    return `${embed}${separator}mute=1&enablejsapi=1&disablekb=1&modestbranding=1&rel=0`;  
   };
 
   const embedUrl = video ? getEmbedUrl(video.videoUrl) : null;
@@ -144,14 +152,20 @@ export default function VideoModal({ exerciseName, userId, onClose }: VideoModal
             </div>
           ) : video ? (
             <div className="space-y-6">
-              <div className="aspect-video bg-black rounded-2xl overflow-hidden shadow-lg border border-gray-200 flex items-center justify-center">
+              <div className="aspect-video bg-black rounded-2xl overflow-hidden shadow-lg border border-gray-200 flex items-center justify-center relative">
                 {embedUrl ? (
-                  <iframe
-                    src={embedUrl}
-                    className="w-full h-full"
-                    allowFullScreen
-                    title={exerciseName}
-                  />
+                  <>
+                    <iframe
+                      src={embedUrl}
+                      className="w-full h-full"
+                      allowFullScreen
+                      allow="autoplay; fullscreen"
+                      title={exerciseName}
+                      style={{ pointerEvents: "auto" }}
+                    />
+                    {/* Overlay transparente para bloquear qualquer interação com controles de volume do YouTube */}
+                    <div className="absolute bottom-0 right-0 w-14 h-10 z-10" title="Áudio desativado permanentemente" />
+                  </>
                 ) : (
                   <div className="text-center p-8 space-y-4">
                     <Play size={48} className="text-orange-500 mx-auto opacity-50" />
