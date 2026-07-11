@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import AppLayout from "@/components/AppLayout";
 import { geminiService } from "@/lib/gemini";
-import { firestoreService, dateHelpers, StoredWorkout, ExerciseLoadEntry } from "@/hooks/useFirebaseFirestore";
+import { firestoreService, dateHelpers, StoredWorkout, ExerciseLoadEntry, WorkoutCompletionEntry } from "@/hooks/useFirebaseFirestore";
 import {
   Utensils, Target, RefreshCw, Loader2, ChevronRight, Timer, X, Sparkles, Activity, Trash2, CheckCircle2, Play, Trophy, Info, Weight, AlertTriangle, TrendingDown, Award, AlertCircle
 } from "lucide-react";
@@ -33,6 +33,10 @@ export default function Dashboard() {
   const [workoutLoading, setWorkoutLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [weekCompleted, setWeekCompleted] = useState(0);
+  // Rastreamento interno dos dias concluídos no ciclo atual (conjunto de dayNumbers)
+  const [completedDaysSet, setCompletedDaysSet] = useState<Set<number>>(new Set());
+  // Completions da semana para calcular próximo treino pendente
+  const [weekCompletions, setWeekCompletions] = useState<WorkoutCompletionEntry[]>([]);
   // currentWeek é calculado dinamicamente pelo número da semana ISO
   const currentWeek = dateHelpers.getCurrentWeekNumber();
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -85,6 +89,12 @@ export default function Dashboard() {
       ]);
       setActiveWorkout(workout);
       setWeekCompleted(completions.length);
+      setWeekCompletions(completions);
+
+      // Construir conjunto de dias concluídos no ciclo atual (deduplicados por dayNumber)
+      const daysSet = new Set<number>();
+      completions.forEach((c: WorkoutCompletionEntry) => daysSet.add(c.day));
+      setCompletedDaysSet(daysSet);
 
       // Preencher cargas sugeridas (histórico)
       const suggestedLoads: Record<string, string> = {};
@@ -393,23 +403,31 @@ export default function Dashboard() {
 
       await loadData();
 
-      // Identificar próximo treino
+      // Identificar próximo treino: primeiro pendente na sequência A→B→C→D
       const days = activeWorkout.days || [];
-      const nextDayIndex = days.findIndex(d => d.dayNumber > dayNumber);
-      const hasMoreDaysThisWeek = nextDayIndex !== -1;
+      const allDaysInWorkout = days.map(d => d.dayNumber).sort((a, b) => a - b);
+      
+      // Dias concluídos após loadData (que atualiza completedDaysSet)
+      // Precisamos verificar quais dias estão concluídos no ciclo
+      const completedSet = new Set<number>();
+      completions.forEach((c: WorkoutCompletionEntry) => completedSet.add(c.day));
+      
+      // Encontrar o primeiro dia na sequência que NÃO foi concluído
+      const pendingDayNumber = allDaysInWorkout.find(d => !completedSet.has(d));
+      const isCycleComplete = allDaysInWorkout.every(d => completedSet.has(d));
       
       let nextTitle = "";
       let nextTiming = "";
 
-      if (hasMoreDaysThisWeek) {
-        const nextDay = days[nextDayIndex];
-        nextTitle = nextDay.title || `Treino do dia ${nextDay.dayNumber}`;
-        // Se a semana está completa (weekCompleted >= target), próximo é na nova semana
-        const isWeekFull = weekCompleted >= target;
-        nextTiming = isWeekFull ? "Na próxima semana" : "Amanhã";
-      } else {
-        nextTitle = days[0]?.title || "Dia 1";
-        nextTiming = "Início de um novo ciclo!";
+      if (isCycleComplete) {
+        // Ciclo concluído — novo ciclo começa
+        nextTitle = days[0]?.title || "Dia 1 (Treino A)";
+        nextTiming = "Novo ciclo iniciado! 🎉";
+      } else if (pendingDayNumber !== undefined) {
+        const pendingDay = days.find(d => d.dayNumber === pendingDayNumber);
+        nextTitle = pendingDay?.title || `Treino do dia ${pendingDayNumber}`;
+        const remainingCount = allDaysInWorkout.filter(d => !completedSet.has(d)).length - 1; // -1 pois o atual já está pendente
+        nextTiming = `${remainingCount} treino${remainingCount !== 1 ? 's' : ''} pendente${remainingCount !== 1 ? 's' : ''} no ciclo`;
       }
 
       setCompletionSummary({
@@ -719,20 +737,22 @@ export default function Dashboard() {
                 <h3 className="text-xs font-bold text-white/50 uppercase tracking-widest mb-1">Progresso Semanal</h3>
                 <p className="text-2xl font-black">SEMANA {currentWeek}</p>
               </div>
-              <span className="text-orange-500 font-black text-xl">{Math.min(weekCompleted, 4)}/4</span>
+              <span className="text-orange-500 font-black text-xl">{completedDaysSet.size}/{days.length}</span>
             </div>
 
-            {/* Sequência compacta A-B-C-D com indicadores ✓/○ */}
+            {/* Sequência compacta A-B-C-D com indicadores ✓/○ — baseado nos dias concluídos */}
             <div className="flex items-center gap-3 mb-2">
-              {['A', 'B', 'C', 'D'].map((letter, index) => {
-                const dayNumber = index + 1;
-                const isCompleted = weekCompleted >= dayNumber;
+              {days.slice(0, 4).map((day, index) => {
+                const letters = ['A', 'B', 'C', 'D'];
+                const letter = letters[index] || `${day.dayNumber}`;
+                const isCompleted = completedDaysSet.has(day.dayNumber);
+                const isNextPending = !completedDaysSet.has(day.dayNumber) && days.slice(0, day.dayNumber).every(d => completedDaysSet.has(d.dayNumber));
                 return (
-                  <div key={letter} className="flex items-center gap-1.5">
-                    <span className={`text-sm font-black transition-colors ${isCompleted ? 'text-green-400' : 'text-white/30'}`}>
+                  <div key={day.dayNumber} className="flex items-center gap-1.5">
+                    <span className={`text-sm font-black transition-colors ${isCompleted ? 'text-green-400' : isNextPending ? 'text-orange-400' : 'text-white/30'}`}>
                       {isCompleted ? '✓' : '○'}
                     </span>
-                    <span className={`text-base font-black tracking-wide transition-colors ${isCompleted ? 'text-green-400' : 'text-white/60'}`}>
+                    <span className={`text-base font-black tracking-wide transition-colors ${isCompleted ? 'text-green-400' : isNextPending ? 'text-orange-400' : 'text-white/60'}`}>
                       {letter}
                     </span>
                   </div>
@@ -741,11 +761,16 @@ export default function Dashboard() {
             </div>
 
             <p className="text-[10px] text-white/40 font-medium">
-              {weekCompleted >= 4
-                ? "Ciclo completo! Novo ciclo iniciado. 🎉"
-                : weekCompleted > 0
-                ? `${4 - weekCompleted} treino${4 - weekCompleted > 1 ? 's' : ''} restantes no ciclo`
-                : "Inicie seu treino para começar o ciclo!"}
+              {(() => {
+                const allDays = days.map(d => d.dayNumber);
+                const allCompleted = allDays.every(d => completedDaysSet.has(d));
+                if (allCompleted) return "Ciclo completo! Novo ciclo iniciado. 🎉";
+                const pending = allDays.filter(d => !completedDaysSet.has(d));
+                if (pending.length === 0) return "Inicie seu treino para começar o ciclo!";
+                const firstPending = pending.sort((a, b) => a - b)[0];
+                const letters = ['A', 'B', 'C', 'D'];
+                return `Próximo: ${letters[firstPending - 1] || 'Dia ' + firstPending}`;
+              })()}
             </p>
           </div>
           <div className="absolute -right-4 -bottom-4 opacity-10">
