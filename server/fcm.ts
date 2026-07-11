@@ -1,21 +1,9 @@
-/**
- * ─── Firebase Cloud Messaging (FCM) – Notificações Nativas Android ────────────
- * 
- * Este módulo envia notificações push nativas do Android para os usuários
- * do Projeto Verão. Funciona mesmo com o app completamente fechado e após
- * reiniciar o dispositivo, pois utiliza o Google Play Services nativo.
- * 
- * Arquitetura:
- * 1. O app web (WebView no APK) registra o FCM Token no Firestore
- * 2. O backend verifica lembretes pendentes e dispara notificações via FCM
- * 3. O Service Worker no APK recebe o push e exibe a notificação nativa
- */
-
-import { initializeApp, cert, getApps, getApp } from "firebase-admin/app";
+import { initializeApp, cert, getApps, getApp, App } from "firebase-admin/app";
 import { getMessaging } from "firebase-admin/messaging";
+import { getFirestore, Firestore } from "firebase-admin/firestore";
 
 // Inicializar Firebase Admin (apenas uma vez)
-let app;
+let app: App;
 if (!getApps().length) {
   const credential = process.env.GOOGLE_APPLICATION_CREDENTIALS_PATH
     ? cert(process.env.GOOGLE_APPLICATION_CREDENTIALS_PATH)
@@ -47,7 +35,7 @@ export async function sendNotificationToDevice(
         timestamp: Date.now().toString(),
       },
       android: {
-        priority: "high",
+        priority: "high" as "high", // Explicitamente tipado para corrigir erro
         notification: {
           channelId: "projeto_verao_reminders",
           sound: "default",
@@ -82,8 +70,8 @@ export async function sendNotificationToTokens(
   body: string,
   data?: Record<string, string>
 ): Promise<{ sent: number; failed: number }> {
-  let sent = 0;
-  let failed = 0;
+  let sent: number = 0;
+  let failed: number = 0;
 
   for (const token of fcmTokens) {
     const success = await sendNotificationToDevice(token, title, body, data);
@@ -117,7 +105,7 @@ export async function sendMulticast(
         timestamp: Date.now().toString(),
       },
       android: {
-        priority: "high",
+        priority: "high" as "high", // Explicitamente tipado para corrigir erro
         notification: {
           channelId: "projeto_verao_reminders",
           sound: "default",
@@ -129,6 +117,8 @@ export async function sendMulticast(
     };
 
     const response = await messaging.sendEachForMulticast(message);
+    let sent: number = 0;
+    let failed: number = 0;
     const invalidTokens: string[] = [];
 
     response.responses.forEach((resp, index) => {
@@ -158,12 +148,10 @@ export async function updateFcmToken(
   fcmToken: string
 ): Promise<boolean> {
   try {
-    // Importar dinamicamente para evitar dependência circular
-    const { doc, setDoc, getFirestore } = await import("firebase-admin/firestore");
-    const db = getFirestore(app);
-    const userDocRef = doc(db, "users", userId);
+    const db: Firestore = getFirestore(app);
+    const userDocRef = db.collection("users").doc(userId);
     
-    await setDoc(userDocRef, { fcmToken }, { merge: true });
+    await userDocRef.set({ fcmToken }, { merge: true });
     console.log(`[FCM] Token atualizado para user ${userId}`);
     return true;
   } catch (error: any) {
@@ -176,9 +164,8 @@ export async function updateFcmToken(
 
 export async function getUserFcmTokens(userId: string): Promise<string[]> {
   try {
-    const { doc, getFirestore } = await import("firebase-admin/firestore");
-    const db = getFirestore(app);
-    const userDocRef = doc(db, "users", userId);
+    const db: Firestore = getFirestore(app);
+    const userDocRef = db.collection("users").doc(userId);
     const snap = await userDocRef.get();
     
     const data = snap.data();

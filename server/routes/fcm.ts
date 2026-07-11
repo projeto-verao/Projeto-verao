@@ -74,7 +74,7 @@ export function registerFcmRoutes(app: Express) {
           timestamp: Date.now().toString(),
         },
         android: {
-          priority: "high",
+          priority: "high" as "high",
           notification: {
             icon: "ic_launcher",
             color: "#000000",

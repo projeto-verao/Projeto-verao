@@ -76,9 +76,9 @@ async function registerFcmToken() {
 
       // Registrar o token no servidor via tRPC
       try {
-        await trpcClient.mutation(["fcm", "registerToken"], {
+        await (trpcClient as any).mutation("fcm.registerToken", {
           fcmToken: token,
-        }).catch((err) => {
+        }).catch((err: any) => {
           // Endpoint pode não existir ainda - não é crítico
           console.log("[FCM] Endpoint de registro não disponível, token salvo localmente");
         });
@@ -116,7 +116,7 @@ function setupForegroundMessaging() {
       new Notification(title, {
         body,
         icon: "/icons/icon-192x192.png",
-        vibrate: [100, 50, 100],
+
       });
     }
   });

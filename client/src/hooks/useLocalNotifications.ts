@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef } from "react";
 
 // ─── Tipo para agendamento ─────────────────────────────────────────────────────
 export interface ScheduledNotification {
+  enabled?: boolean; // Adicionado para corrigir erro de tipo
+
   reminderId: string;
   title: string;
   body: string;
@@ -147,6 +149,7 @@ export function useRecurringReminders() {
       time?: string;
       intervalHours?: number;
       daysOfWeek?: number[];
+      enabled?: boolean; // Adicionado para corrigir erro de tipo
     }
   ): Promise<boolean> => {
     if (!reminder.enabled) {

@@ -1,0 +1,51 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // ─── Funções Auxiliares ──────────────────────────────────────────────────
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidImage() {
+      return request.resource.contentType.matches('image/.*')
+          && request.resource.size < 10 * 1024 * 1024; // máximo 10 MB
+    }
+
+    // ─── Estrutura Padronizada: users/{uid}/... ─────────────────────────────
+    match /users/{userId}/{allPaths=**} {
+      // Qualquer usuário autenticado pode ler fotos de perfil (para social futuro)
+      // Fotos de avaliação e evolução são privadas para o dono
+      allow read: if isAuthenticated() && (
+        allPaths.startsWith('profile/') || isOwner(userId)
+      );
+      
+      // Apenas o próprio usuário pode fazer upload para seu diretório
+      allow write: if isOwner(userId) && isValidImage();
+    }
+
+    // ─── Legado (Suporte aos caminhos antigos durante migração) ──────────────
+    match /profiles/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && fileName.matches(request.auth.uid + '_.*') && isValidImage();
+    }
+    match /evaluations/{fileName} {
+      allow read: if isAuthenticated() && fileName.matches(request.auth.uid + '_.*');
+      allow write: if isAuthenticated() && fileName.matches(request.auth.uid + '_.*') && isValidImage();
+    }
+    match /bodyProgress/{userId}/{fileName} {
+      allow read: if isOwner(userId);
+      allow write: if isOwner(userId) && isValidImage();
+    }
+
+    // ─── Negar tudo o mais ───────────────────────────────────────────────────
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

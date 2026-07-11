@@ -3,10 +3,11 @@ import { useAuth } from "@/contexts/AuthContext";
 import AppLayout from "@/components/AppLayout";
 import { geminiService } from "@/lib/gemini";
 import { firestoreService, ChatMessageEntry, BodyProgressEntry, StoredWorkout } from "@/hooks/useFirebaseFirestore";
-import { ArrowLeft, Send, Loader2, Camera, Upload, ChevronDown, RotateCcw, Sparkles, Info, Ruler, CheckCircle2, X, Trash2 } from "lucide-react";
+import { ArrowLeft, Send, Loader2, Camera, Upload, ChevronDown, RotateCcw, Sparkles, Info, Ruler, CheckCircle2, X, Trash2, Dumbbell } from "lucide-react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 import { Streamdown } from "streamdown";
+import { imageService } from "@/lib/ImageService";
 
 type Tab = "chat" | "perfil" | "evolucao" | "historico";
 
@@ -211,101 +212,62 @@ export default function IATrainer() {
     setAnalyzing(true);
     const toastId = toast.loading("A IA está analisando sua foto...");
     
-    const reader = new FileReader();
-    reader.onerror = () => {
-      toast.error("Erro ao ler o arquivo da foto.", { id: toastId });
-      setAnalyzing(false);
-    };
-
-    reader.onload = async () => {
-      try {
-        const rawBase64 = reader.result as string;
-        
-        // Compressão da imagem antes de enviar para IA e Firestore
-        const compressedBase64 = await new Promise<string>((resolve, reject) => {
-          const img = new Image();
-          img.src = rawBase64;
-          img.onload = () => {
-            const canvas = document.createElement('canvas');
-            let width = img.width;
-            let height = img.height;
-            const MAX_SIZE = 800; // Tamanho máximo para garantir que fique abaixo de 1MB
-
-            if (width > height) {
-              if (width > MAX_SIZE) {
-                height *= MAX_SIZE / width;
-                width = MAX_SIZE;
-              }
-            } else {
-              if (height > MAX_SIZE) {
-                width *= MAX_SIZE / height;
-                height = MAX_SIZE;
-              }
-            }
-
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            ctx?.drawImage(img, 0, 0, width, height);
-            resolve(canvas.toDataURL('image/jpeg', 0.7)); // 70% de qualidade
-          };
-          img.onerror = reject;
-        });
-
-        // IA analisa foto e retorna estimativas de medidas
-        const analysis = await geminiService.analyzeBody(compressedBase64, profile as any);
-        
-        // Validação de imagem humana
-        if (analysis.isValidHumanBody === false) {
-          toast.error(analysis.rejectionReason || "A foto enviada não parece ser de uma pessoa para avaliação física.", { id: toastId });
-          setAnalyzing(false);
-          return;
-        }
-
-        // Atualiza o estado de measurements com TODAS as estimativas da IA
-        setMeasurements({
-          weightKg: analysis.weightKg || profile?.weightKg?.toString() || "",
-          bodyFatPercent: analysis.bfEstimate || "",
-          chestCm: analysis.chestCm || "",
-          waistCm: analysis.waistCm || "",
-          armCm: analysis.armCm || "",
-          thighCm: analysis.thighCm || ""
-        });
-
-        // Constrói a nota detalhada para o histórico
-        const fullNotes = [
-          analysis.detailedAnalysis,
-          `**Pontos Fortes:** ${analysis.strengths}`,
-          `**Melhorias:** ${analysis.improvements}`,
-          `**Resumo:** ${analysis.summary}`,
-          `**Dica:** ${analysis.tip}`
-        ].filter(Boolean).join("\n\n");
-
-        await firestoreService.addBodyProgress(user.uid, {
-          photoUrl: compressedBase64,
-          bodyFatPercent: parseFloat(analysis.bfEstimate) || undefined,
-          weightKg: parseFloat(analysis.weightKg || "") || profile?.weightKg,
-          chestCm: parseFloat(analysis.chestCm || "") || undefined,
-          waistCm: parseFloat(analysis.waistCm || "") || undefined,
-          armCm: parseFloat(analysis.armCm || "") || undefined,
-          thighCm: parseFloat(analysis.thighCm || "") || undefined,
-          notes: fullNotes,
-        });
-        
-        toast.success("Análise visual concluída! As medidas foram estimadas abaixo.", { id: toastId });
-        loadEvolution();
-      } catch (err: any) {
-        console.error("Erro na análise corporal:", err);
-        toast.error(err.message || "Erro ao analisar foto. Tente novamente.", { id: toastId });
-      } finally {
-        setAnalyzing(false);
-      }
-    };
-    
     try {
-      reader.readAsDataURL(file);
-    } catch (err) {
-      toast.error("Erro ao processar imagem.", { id: toastId });
+      // 1. Redimensionar e comprimir imagem para IA (base64)
+      const compressedBase64 = await imageService.resizeImage(file, 800, 0.7);
+
+      // 2. IA analisa foto e retorna estimativas de medidas
+      const analysis = await geminiService.analyzeBody(compressedBase64, profile as any);
+      
+      // 3. Validação de imagem humana
+      if (analysis.isValidHumanBody === false) {
+        toast.error(analysis.rejectionReason || "A foto enviada não parece ser de uma pessoa para avaliação física.", { id: toastId });
+        setAnalyzing(false);
+        return;
+      }
+
+      // 4. Upload da imagem original para o Firebase Storage (com compressão leve)
+      const storagePath = `users/${user.uid}/evolution/${new Date().toISOString().replace(/:/g, '-')}.jpg`;
+      const compressedForStorage = await imageService.resizeImage(file, 1200, 0.8);
+      const photoUrl = await imageService.uploadImage(compressedForStorage, storagePath);
+
+      // 5. Atualiza o estado de measurements com TODAS as estimativas da IA
+      setMeasurements({
+        weightKg: analysis.weightKg || profile?.weightKg?.toString() || "",
+        bodyFatPercent: analysis.bfEstimate || "",
+        chestCm: analysis.chestCm || "",
+        waistCm: analysis.waistCm || "",
+        armCm: analysis.armCm || "",
+        thighCm: analysis.thighCm || ""
+      });
+
+      // 6. Constrói a nota detalhada para o histórico
+      const fullNotes = [
+        analysis.detailedAnalysis,
+        `**Pontos Fortes:** ${analysis.strengths}`,
+        `**Melhorias:** ${analysis.improvements}`,
+        `**Resumo:** ${analysis.summary}`,
+        `**Dica:** ${analysis.tip}`
+      ].filter(Boolean).join("\n\n");
+
+      // 7. Salva no Firestore com a URL do Storage
+      await firestoreService.addBodyProgress(user.uid, {
+        photoUrl: photoUrl || undefined,
+        bodyFatPercent: parseFloat(analysis.bfEstimate) || undefined,
+        weightKg: parseFloat(analysis.weightKg || "") || profile?.weightKg,
+        chestCm: parseFloat(analysis.chestCm || "") || undefined,
+        waistCm: parseFloat(analysis.waistCm || "") || undefined,
+        armCm: parseFloat(analysis.armCm || "") || undefined,
+        thighCm: parseFloat(analysis.thighCm || "") || undefined,
+        notes: fullNotes,
+      });
+      
+      toast.success("Análise visual concluída! As medidas foram estimadas abaixo.", { id: toastId });
+      loadEvolution();
+    } catch (err: any) {
+      console.error("Erro na análise corporal:", err);
+      toast.error(err.message || "Erro ao analisar foto. Tente novamente.", { id: toastId });
+    } finally {
       setAnalyzing(false);
     }
   };
@@ -553,409 +515,216 @@ export default function IATrainer() {
                     Galeria
                   </button>
                 </div>
-                <input type="file" ref={cameraInputRef} accept="image/*" capture="environment" className="hidden" onChange={handlePhotoSelect} />
-                <input type="file" ref={fileInputRef} accept="image/*" className="hidden" onChange={handlePhotoSelect} />
+                <input
+                  type="file"
+                  ref={cameraInputRef}
+                  accept="image/*"
+                  capture="user"
+                  onChange={handlePhotoSelect}
+                  className="hidden"
+                />
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  accept="image/*"
+                  onChange={handlePhotoSelect}
+                  className="hidden"
+                />
               </div>
 
-              {/* Tarefa 5: Medidas preenchidas pela IA */}
+              {/* Grid de Medidas (Editável) */}
               <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
                 <div className="flex items-center gap-2 mb-4">
-                  <Ruler size={18} className="text-primary" />
-                  <h3 className="font-bold text-gray-900 text-sm uppercase tracking-wide">Medidas Corporais</h3>
+                  <Ruler className="text-gray-400 w-4 h-4" />
+                  <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wider">Medidas Atuais</h4>
                 </div>
+                
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Peso (kg)</label>
-                    <input type="number" value={measurements.weightKg} onChange={e => setMeasurements({...measurements, weightKg: e.target.value})} className="w-full app-input text-sm" placeholder="Ex: 75.5" />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Gordura (%)</label>
-                    <input type="number" value={measurements.bodyFatPercent} onChange={e => setMeasurements({...measurements, bodyFatPercent: e.target.value})} className="w-full app-input text-sm" placeholder="Ex: 18" />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Peitoral (cm)</label>
-                    <input type="number" value={measurements.chestCm} onChange={e => setMeasurements({...measurements, chestCm: e.target.value})} className="w-full app-input text-sm" placeholder="Ex: 100" />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Cintura (cm)</label>
-                    <input type="number" value={measurements.waistCm} onChange={e => setMeasurements({...measurements, waistCm: e.target.value})} className="w-full app-input text-sm" placeholder="Ex: 85" />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Braço (cm)</label>
-                    <input type="number" value={measurements.armCm} onChange={e => setMeasurements({...measurements, armCm: e.target.value})} className="w-full app-input text-sm" placeholder="Ex: 38" />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Coxa (cm)</label>
-                    <input type="number" value={measurements.thighCm} onChange={e => setMeasurements({...measurements, thighCm: e.target.value})} className="w-full app-input text-sm" placeholder="Ex: 55" />
-                  </div>
+                  {[
+                    { label: "Peso (kg)", key: "weightKg" },
+                    { label: "BF (%)", key: "bodyFatPercent" },
+                    { label: "Peito (cm)", key: "chestCm" },
+                    { label: "Cintura (cm)", key: "waistCm" },
+                    { label: "Braço (cm)", key: "armCm" },
+                    { label: "Coxa (cm)", key: "thighCm" },
+                  ].map((field) => (
+                    <div key={field.key}>
+                      <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1 ml-1">{field.label}</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={measurements[field.key as keyof typeof measurements]}
+                        onChange={(e) => setMeasurements(prev => ({ ...prev, [field.key]: e.target.value }))}
+                        placeholder="--"
+                        className="w-full bg-white border-gray-200 rounded-xl text-sm focus:ring-primary focus:border-primary"
+                      />
+                    </div>
+                  ))}
                 </div>
+
                 <button
                   onClick={handleSaveMeasurements}
                   disabled={analyzing}
-                  className="w-full mt-4 py-3 bg-black text-white rounded-xl text-xs font-bold uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-gray-900 transition-colors"
+                  className="w-full mt-4 py-3 bg-white border border-gray-200 text-gray-700 rounded-xl text-sm font-bold hover:bg-gray-50 transition-all flex items-center justify-center gap-2 shadow-sm"
                 >
-                  {analyzing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
-                  Confirmar Medidas
+                  {analyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4 text-green-500" />}
+                  Salvar Medidas Manualmente
                 </button>
               </div>
 
+              {/* Histórico Visual */}
               <div className="space-y-4">
-                <h3 className="font-semibold text-gray-900">Histórico de Fotos</h3>
-                {evolutionHistory.length === 0 ? (
-                  <p className="text-center text-gray-400 text-sm py-8">Nenhuma análise feita ainda.</p>
-                ) : (
-                  <div className="grid grid-cols-2 gap-4">
-                    {evolutionHistory.map(entry => (
-                      <div 
-                        key={entry.id} 
-                        className="relative bg-gray-50 rounded-xl overflow-hidden border border-gray-100 group"
+                <h4 className="font-bold text-gray-900 flex items-center gap-2">
+                  Histórico de Evolução
+                  <span className="text-xs font-normal text-gray-500">({evolutionHistory.length} registros)</span>
+                </h4>
+                
+                <div className="grid grid-cols-1 gap-4">
+                  {evolutionHistory.length === 0 ? (
+                    <div className="text-center py-8 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                      <p className="text-sm text-gray-500">Nenhum registro de evolução ainda.</p>
+                    </div>
+                  ) : (
+                    evolutionHistory.map((entry) => (
+                      <div
+                        key={entry.id}
+                        onClick={() => setSelectedEntry(entry)}
+                        className="bg-white border border-gray-100 rounded-2xl p-3 flex items-center gap-4 hover:border-primary/30 transition-all cursor-pointer group shadow-sm"
                       >
-                        <div 
-                          onClick={() => setSelectedEntry(entry)}
-                          className="cursor-pointer hover:opacity-90 transition-all active:scale-[0.98]"
-                        >
+                        <div className="w-16 h-16 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0 border border-gray-50">
                           {entry.photoUrl ? (
-                            <img src={entry.photoUrl} alt="Evolução" className="w-full h-40 object-cover" />
+                            <img src={entry.photoUrl} alt="Evolução" className="w-full h-full object-cover" />
                           ) : (
-                            <div className="w-full h-40 bg-gray-100 flex flex-col items-center justify-center gap-2 text-gray-400">
-                              <Ruler size={32} />
-                              <span className="text-[10px] font-bold uppercase tracking-widest">Apenas Medidas</span>
+                            <div className="w-full h-full flex items-center justify-center text-gray-300">
+                              <Dumbbell size={24} />
                             </div>
                           )}
-                          <div className="p-2">
-                            <div className="flex justify-between items-center mb-1">
-                            <span className="text-[10px] text-gray-400">
-                              {new Date(entry.createdAt.toMillis()).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                              {entry.bodyFatPercent && <span className="text-xs font-bold text-primary">{entry.bodyFatPercent}% BF</span>}
-                            </div>
-                            <p className="text-[10px] text-gray-600 line-clamp-2">{entry.notes}</p>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between items-start">
+                            <p className="text-xs font-bold text-gray-400 uppercase">
+                              {new Date(entry.createdAt.toMillis()).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                            </p>
+                            {entry.bodyFatPercent && (
+                              <span className="bg-primary/10 text-primary text-[10px] font-bold px-2 py-0.5 rounded-full">
+                                {entry.bodyFatPercent}% BF
+                              </span>
+                            )}
                           </div>
+                          <p className="text-sm font-bold text-gray-900 mt-0.5">
+                            {entry.weightKg ? `${entry.weightKg}kg` : "Apenas medidas"}
+                          </p>
+                          <p className="text-xs text-gray-500 truncate mt-0.5">
+                            {entry.notes || "Sem observações"}
+                          </p>
                         </div>
-                        
-                        {/* Botão de exclusão direta na miniatura */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteEntry(entry.id);
-                          }}
-                          className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-10"
-                          title="Excluir avaliação"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                        <ChevronDown size={16} className="text-gray-300 group-hover:text-primary transition-colors" />
                       </div>
-                    ))}
-                  </div>
-                )}
+                    ))
+                  )}
+                </div>
               </div>
-
             </div>
           )}
 
           {activeTab === "historico" && (
             <div className="space-y-4">
-              <h3 className="font-semibold text-gray-900 mb-3">Versões de treino</h3>
-              {!workoutVersions || workoutVersions.length === 0 ? (
-                <div className="text-center py-12">
-                  <RotateCcw className="w-12 h-12 text-gray-200 mx-auto mb-3" />
-                  <p className="text-gray-400 text-sm">Nenhuma versão de treino ainda</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {workoutVersions.map(version => (
-                    <div
-                      key={version.id}
-                      className={`p-4 rounded-2xl border transition-all ${
-                        version.isActive ? "border-primary bg-primary/5" : "border-gray-100 bg-white"
-                      }`}
-                    >
-                      <div className="flex justify-between items-start mb-2">
-                        <div>
-                          <h4 className="font-bold text-gray-900">{version.title}</h4>
-                          <span className="text-[10px] text-gray-400">
-                            v{version.version} • {new Date(version.createdAt.toMillis()).toLocaleDateString()}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          {version.isActive ? (
-                            <span className="px-2 py-0.5 bg-primary text-white text-[10px] font-bold rounded-full">ATIVO</span>
-                          ) : (
-                            <button
-                              onClick={() => handleRestore(version.id)}
-                              className="text-xs text-primary font-medium hover:underline"
-                            >
-                              Restaurar
-                            </button>
-                          )}
-                          {!version.isActive && (
-                            <button
-                              onClick={async () => {
-                                if (!user || !window.confirm("Deseja excluir permanentemente esta versão de treino?")) return;
-                                try {
-                                  await firestoreService.deleteWorkout(user.uid, version.id);
-                                  toast.success("Versão excluída!");
-                                  loadVersions();
-                                } catch (err) {
-                                  toast.error("Erro ao excluir.");
-                                }
-                              }}
-                              className="p-1.5 text-gray-300 hover:text-red-500 transition-colors"
-                              title="Excluir versão"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      <p className="text-xs text-gray-600 italic flex items-start gap-1">
-                        <Info size={12} className="mt-0.5 shrink-0" />
-                        {version.changeDescription}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Modal de Detalhes da Evolução (Fora das abas para garantir visibilidade) */}
-        {selectedEntry && (
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-            <div className="bg-white w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
-              <div className="flex items-center justify-between p-4 border-b">
-                <div>
-                  <h3 className="font-bold text-gray-900">Detalhes da Avaliação</h3>
-                        <p className="text-xs text-gray-400">
-                          {new Date(selectedEntry.createdAt.toMillis()).toLocaleString('pt-BR', { 
-                            day: 'numeric', 
-                            month: 'long', 
-                            year: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
-                        </p>
-                </div>
-                <button onClick={() => setSelectedEntry(null)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                  <X size={20} className="text-gray-500" />
-                </button>
-              </div>
-              
-              <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
-                {selectedEntry.photoUrl && (
-                  <div className="rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
-                    <img src={selectedEntry.photoUrl} alt="Evolução" className="w-full object-contain bg-black max-h-[400px]" />
-                  </div>
-                )}
-
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="bg-primary/5 rounded-2xl p-3 text-center border border-primary/10">
-                    <span className="block text-[10px] font-bold text-primary uppercase mb-1">Peso</span>
-                    <span className="text-lg font-bold text-gray-900">{selectedEntry.weightKg || '--'} <small className="text-[10px] font-normal">kg</small></span>
-                  </div>
-                  <div className="bg-primary/5 rounded-2xl p-3 text-center border border-primary/10">
-                    <span className="block text-[10px] font-bold text-primary uppercase mb-1">BF</span>
-                    <span className="text-lg font-bold text-gray-900">{selectedEntry.bodyFatPercent || '--'} <small className="text-[10px] font-normal">%</small></span>
-                  </div>
-                  <div className="bg-primary/5 rounded-2xl p-3 text-center border border-primary/10">
-                    <span className="block text-[10px] font-bold text-primary uppercase mb-1">Cintura</span>
-                    <span className="text-lg font-bold text-gray-900">{selectedEntry.waistCm || '--'} <small className="text-[10px] font-normal">cm</small></span>
-                  </div>
-                  <div className="bg-gray-50 rounded-2xl p-3 text-center border border-gray-100">
-                    <span className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Peitoral</span>
-                    <span className="text-sm font-bold text-gray-900">{selectedEntry.chestCm || '--'} <small className="text-[10px] font-normal">cm</small></span>
-                  </div>
-                  <div className="bg-gray-50 rounded-2xl p-3 text-center border border-gray-100">
-                    <span className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Braço</span>
-                    <span className="text-sm font-bold text-gray-900">{selectedEntry.armCm || '--'} <small className="text-[10px] font-normal">cm</small></span>
-                  </div>
-                  <div className="bg-gray-50 rounded-2xl p-3 text-center border border-gray-100">
-                    <span className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Coxa</span>
-                    <span className="text-sm font-bold text-gray-900">{selectedEntry.thighCm || '--'} <small className="text-[10px] font-normal">cm</small></span>
-                  </div>
-                </div>
-
-                <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
-                  <h4 className="text-xs font-bold text-gray-400 uppercase mb-3 flex items-center gap-2">
-                    <Info size={14} className="text-primary" />
-                    Análise da IA
-                  </h4>
-                  <div className="prose prose-sm text-gray-700 max-w-none">
-                    <Streamdown>{selectedEntry.notes || ""}</Streamdown>
-                  </div>
-                </div>
-              </div>
-
-                    <div className="p-6 pb-10 border-t bg-white flex flex-col gap-3 sticky bottom-0 mt-auto">
-                      <button 
-                        onClick={() => handleDeleteEntry(selectedEntry.id)}
-                        className="w-full flex items-center justify-center gap-2 py-4 bg-red-500 text-white rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-red-600 transition-all active:scale-[0.98] shadow-lg shadow-red-200"
-                      >
-                        <Trash2 size={18} />
-                        EXCLUIR ESTA AVALIAÇÃO
-                      </button>
-                      <button 
-                        onClick={() => setSelectedEntry(null)}
-                        className="w-full py-4 bg-gray-100 text-gray-500 rounded-2xl text-sm font-bold hover:bg-gray-200 transition-all"
-                      >
-                        Voltar
-                      </button>
-                    </div>
-            </div>
-          </div>
-        )}
-
-          {activeTab === "historico" && (
-            <div className="space-y-4">
-              <h3 className="font-semibold text-gray-900 mb-3">Versões de treino</h3>
-              {!workoutVersions || workoutVersions.length === 0 ? (
-                <div className="text-center py-12">
-                  <RotateCcw className="w-12 h-12 text-gray-200 mx-auto mb-3" />
-                  <p className="text-gray-400 text-sm">Nenhuma versão de treino ainda</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {workoutVersions.map(version => (
-                    <div
-                      key={version.id}
-                      className={`p-4 rounded-2xl border transition-all ${
-                        version.isActive ? "border-primary bg-primary/5" : "border-gray-100 bg-white"
-                      }`}
-                    >
-                      <div className="flex justify-between items-start mb-2">
-                        <div>
-                          <h4 className="font-bold text-gray-900">{version.title}</h4>
-                          <span className="text-[10px] text-gray-400">
-                            v{version.version} • {new Date(version.createdAt.toMillis()).toLocaleDateString()}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          {version.isActive ? (
-                            <span className="px-2 py-0.5 bg-primary text-white text-[10px] font-bold rounded-full">ATIVO</span>
-                          ) : (
-                            <button
-                              onClick={() => handleRestore(version.id)}
-                              className="text-xs text-primary font-medium hover:underline"
-                            >
-                              Restaurar
-                            </button>
-                          )}
-                          {!version.isActive && (
-                            <button
-                              onClick={async () => {
-                                if (!user || !window.confirm("Deseja excluir permanentemente esta versão de treino?")) return;
-                                try {
-                                  await firestoreService.deleteWorkout(user.uid, version.id);
-                                  toast.success("Versão excluída!");
-                                  loadVersions();
-                                } catch (err) {
-                                  toast.error("Erro ao excluir.");
-                                }
-                              }}
-                              className="p-1.5 text-gray-300 hover:text-red-500 transition-colors"
-                              title="Excluir versão"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      <p className="text-xs text-gray-600 italic flex items-start gap-1">
-                        <Info size={12} className="mt-0.5 shrink-0" />
-                        {version.changeDescription}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-      {/* Modal de Detalhes da Evolução (Fora das abas para garantir visibilidade) */}
-      {selectedEntry && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between p-4 border-b">
-              <div>
-                <h3 className="font-bold text-gray-900">Detalhes da Avaliação</h3>
-                <p className="text-xs text-gray-400">
-                  {new Date(selectedEntry.createdAt.toMillis()).toLocaleString('pt-BR', { 
-                    day: 'numeric', 
-                    month: 'long', 
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  })}
+              <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 flex items-start gap-3">
+                <Info className="text-amber-500 w-5 h-5 mt-0.5 shrink-0" />
+                <p className="text-xs text-amber-800 leading-relaxed">
+                  Aqui você encontra todas as versões de treinos geradas pela IA. Você pode restaurar qualquer versão anterior se preferir.
                 </p>
               </div>
-              <button 
-                onClick={() => setSelectedEntry(null)}
-                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-              >
-                <X size={20} className="text-gray-500" />
+
+              <div className="space-y-3">
+                {workoutVersions.length === 0 ? (
+                  <div className="text-center py-12">
+                    <p className="text-sm text-gray-500">Nenhum histórico de treino encontrado.</p>
+                  </div>
+                ) : (
+                  workoutVersions.map((v) => (
+                    <div key={v.id} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <h4 className="font-bold text-gray-900">{v.title}</h4>
+                          <p className="text-[10px] font-bold text-gray-400 uppercase">
+                            {new Date(v.createdAt.toMillis()).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                        </div>
+                        {v.isActive && (
+                          <span className="bg-green-100 text-green-700 text-[10px] font-bold px-2 py-1 rounded-lg flex items-center gap-1">
+                            <CheckCircle2 size={10} /> ATIVO
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-600 mb-4 line-clamp-2">
+                        {v.changeDescription || "Treino inicial gerado pela IA."}
+                      </p>
+                      {!v.isActive && (
+                        <button
+                          onClick={() => handleRestore(v.id)}
+                          className="w-full py-2 bg-gray-50 text-gray-700 rounded-xl text-xs font-bold hover:bg-primary hover:text-white transition-all flex items-center justify-center gap-2"
+                        >
+                          <RotateCcw size={14} /> Restaurar esta versão
+                        </button>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Modal de Detalhes da Evolução */}
+      {selectedEntry && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[90vh] overflow-y-auto animate-in slide-in-from-bottom duration-300">
+            <div className="sticky top-0 bg-white/80 backdrop-blur-md p-4 border-b border-gray-100 flex justify-between items-center z-10">
+              <h3 className="font-bold text-gray-900">Detalhes da Evolução</h3>
+              <button onClick={() => setSelectedEntry(null)} className="p-2 bg-gray-100 rounded-full text-gray-500">
+                <X size={20} />
               </button>
             </div>
-
-            <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
+            
+            <div className="p-6 space-y-6">
               {selectedEntry.photoUrl && (
-                <div className="rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
-                  <img src={selectedEntry.photoUrl} alt="Evolução" className="w-full h-64 object-cover" />
+                <div className="aspect-[4/5] rounded-3xl overflow-hidden bg-gray-100 border border-gray-100 shadow-inner">
+                  <img src={selectedEntry.photoUrl} alt="Evolução" className="w-full h-full object-cover" />
                 </div>
               )}
 
               <div className="grid grid-cols-3 gap-3">
-                <div className="bg-primary/5 rounded-2xl p-3 text-center border border-primary/10">
-                  <span className="block text-[10px] font-bold text-primary uppercase mb-1">Peso</span>
-                  <span className="text-lg font-bold text-gray-900">{selectedEntry.weightKg || '--'} <small className="text-[10px] font-normal">kg</small></span>
-                </div>
-                <div className="bg-primary/5 rounded-2xl p-3 text-center border border-primary/10">
-                  <span className="block text-[10px] font-bold text-primary uppercase mb-1">BF</span>
-                  <span className="text-lg font-bold text-gray-900">{selectedEntry.bodyFatPercent || '--'} <small className="text-[10px] font-normal">%</small></span>
-                </div>
-                <div className="bg-primary/5 rounded-2xl p-3 text-center border border-primary/10">
-                  <span className="block text-[10px] font-bold text-primary uppercase mb-1">Cintura</span>
-                  <span className="text-lg font-bold text-gray-900">{selectedEntry.waistCm || '--'} <small className="text-[10px] font-normal">cm</small></span>
-                </div>
-                <div className="bg-gray-50 rounded-2xl p-3 text-center border border-gray-100">
-                  <span className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Peitoral</span>
-                  <span className="text-sm font-bold text-gray-900">{selectedEntry.chestCm || '--'} <small className="text-[10px] font-normal">cm</small></span>
-                </div>
-                <div className="bg-gray-50 rounded-2xl p-3 text-center border border-gray-100">
-                  <span className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Braço</span>
-                  <span className="text-sm font-bold text-gray-900">{selectedEntry.armCm || '--'} <small className="text-[10px] font-normal">cm</small></span>
-                </div>
-                <div className="bg-gray-50 rounded-2xl p-3 text-center border border-gray-100">
-                  <span className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Coxa</span>
-                  <span className="text-sm font-bold text-gray-900">{selectedEntry.thighCm || '--'} <small className="text-[10px] font-normal">cm</small></span>
-                </div>
+                {[
+                  { label: "Peso", value: selectedEntry.weightKg ? `${selectedEntry.weightKg}kg` : "--" },
+                  { label: "BF", value: selectedEntry.bodyFatPercent ? `${selectedEntry.bodyFatPercent}%` : "--" },
+                  { label: "Cintura", value: selectedEntry.waistCm ? `${selectedEntry.waistCm}cm` : "--" },
+                  { label: "Braço", value: selectedEntry.armCm ? `${selectedEntry.armCm}cm` : "--" },
+                  { label: "Coxa", value: selectedEntry.thighCm ? `${selectedEntry.thighCm}cm` : "--" },
+                  { label: "Peito", value: selectedEntry.chestCm ? `${selectedEntry.chestCm}cm` : "--" },
+                ].map((stat, i) => (
+                  <div key={i} className="bg-gray-50 rounded-2xl p-3 text-center border border-gray-100/50">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">{stat.label}</p>
+                    <p className="text-sm font-bold text-gray-900">{stat.value}</p>
+                  </div>
+                ))}
               </div>
 
-              <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
-                <h4 className="text-xs font-bold text-gray-400 uppercase mb-3 flex items-center gap-2">
-                  <Info size={14} className="text-primary" />
-                  Análise da IA
+              <div className="bg-primary/5 rounded-3xl p-5 border border-primary/10">
+                <h4 className="text-sm font-bold text-primary mb-3 flex items-center gap-2">
+                  <Sparkles size={16} /> Análise do Coach
                 </h4>
-                <div className="prose prose-sm text-gray-700 max-w-none">
-                  <Streamdown>{selectedEntry.notes || ""}</Streamdown>
+                <div className="text-sm text-gray-700 leading-relaxed prose prose-sm max-w-none">
+                  <Streamdown>{selectedEntry.notes || "Nenhuma observação registrada."}</Streamdown>
                 </div>
               </div>
-            </div>
 
-            <div className="p-6 pb-10 border-t bg-white flex flex-col gap-3 sticky bottom-0 mt-auto">
-              <button 
+              <button
                 onClick={() => handleDeleteEntry(selectedEntry.id)}
-                className="w-full flex items-center justify-center gap-2 py-4 bg-red-500 text-white rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-red-600 transition-all active:scale-[0.98] shadow-lg shadow-red-200"
+                className="w-full py-4 text-red-500 font-bold text-sm flex items-center justify-center gap-2 hover:bg-red-50 rounded-2xl transition-all"
               >
-                <Trash2 size={18} />
-                EXCLUIR ESTA AVALIAÇÃO
-              </button>
-              <button 
-                onClick={() => setSelectedEntry(null)}
-                className="w-full py-4 bg-gray-100 text-gray-500 rounded-2xl text-sm font-bold hover:bg-gray-200 transition-all"
-              >
-                Voltar
+                <Trash2 size={18} /> Excluir este registro
               </button>
             </div>
           </div>

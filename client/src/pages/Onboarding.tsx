@@ -1,48 +1,13 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
-import { useFirebaseStorage } from "@/hooks/useFirebaseStorage";
 import { geminiService } from "@/lib/gemini";
 import {
   Loader2, ChevronRight, Camera, ImageIcon, UserCircle2, CheckCircle2, X
 } from "lucide-react";
 import { toast } from "sonner";
-import { auth, storage } from "@/lib/firebase";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-
-/**
- * Redimensiona uma imagem para caber no Firestore (limite ~1MB por doc)
- * e para envio eficiente à IA.
- */
-function resizeImage(file: File, maxSize = 720, quality = 0.75): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        let { width, height } = img;
-        if (width > height && width > maxSize) {
-          height = (height * maxSize) / width;
-          width = maxSize;
-        } else if (height > maxSize) {
-          width = (width * maxSize) / height;
-          height = maxSize;
-        }
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return reject(new Error("Canvas não suportado"));
-        ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL("image/jpeg", quality));
-      };
-      img.onerror = () => reject(new Error("Imagem inválida"));
-      img.src = e.target?.result as string;
-    };
-    reader.onerror = () => reject(new Error("Erro ao ler arquivo"));
-    reader.readAsDataURL(file);
-  });
-}
+import { auth } from "@/lib/firebase";
+import { imageService } from "@/lib/ImageService";
 
 interface PhotoSectionProps {
   title: string;
@@ -63,7 +28,7 @@ function PhotoSection({ title, description, note, photo, onPhoto, onClear, icon,
     if (!file) return;
     const toastId = toast.loading("Validando imagem...");
     try {
-      const dataUrl = await resizeImage(file);
+      const dataUrl = await imageService.resizeImage(file);
       
       // Validação da IA para a foto de avaliação (apenas se for a seção de avaliação)
       if (inputIdPrefix === "eval-photo") {
@@ -150,10 +115,11 @@ function PhotoSection({ title, description, note, photo, onPhoto, onClear, icon,
   );
 }
 
+
+
 export default function Onboarding() {
   const [, navigate] = useLocation();
   const { isAuthenticated, loading, updateProfile, profile } = useAuth();
-  const { uploadFromDataUrl } = useFirebaseStorage();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [step, setStep] = useState(1);
 
@@ -193,52 +159,43 @@ export default function Onboarding() {
       return;
     }
 
+    const uid = auth.currentUser?.uid;
+    if (!uid) {
+      
+      toast.error("Erro de autenticação. Tente novamente.");
+      return;
+    }
+
     setIsSubmitting(true);
     const toastId = toast.loading("Salvando suas informações...");
 
     try {
-      let evalPhotoUrl: string | undefined = undefined;
-      let profilePhotoUrl: string | undefined = undefined;
-      const uid = auth.currentUser?.uid;
+      
+      
+      
 
-      if (!uid) {
-        console.error("[Onboarding] Usuário não autenticado no momento do submit");
-        toast.error("Erro de autenticação. Tente novamente.", { id: toastId });
-        setIsSubmitting(false);
-        return;
-      }
+      // ── Etapa 1: Upload das fotos (paralelo para economizar tempo) ──────────
+      // Ambos os uploads são opcionais — falha silenciosa, retorna null
+      const timestamp = Date.now();
+      
 
-      // Upload com timeout de 15s para evitar travamento indefinido
-      const uploadWithTimeout = async (dataUrl: string, path: string, timeoutMs = 15000): Promise<string | null> => {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-        try {
-          // uploadFromDataUrl usa fetch internamente — wrap com timeout
-          const response = await fetch(dataUrl);
-          clearTimeout(timeoutId);
-          const blob = await response.blob();
-          const file = new File([blob], path.split("/").pop() || "file.jpg", { type: "image/jpeg" });
-          const storageRef = ref(storage, path);
-          const snapshot = await uploadBytes(storageRef, file);
-          const downloadUrl = await getDownloadURL(snapshot.ref);
-          return downloadUrl;
-        } catch (err) {
-          clearTimeout(timeoutId);
-          console.warn(`[Onboarding] Upload falhou para ${path}:`, err);
-          return null;
-        }
-      };
+      const [evalPhotoUrl, profilePhotoUrl] = await Promise.all([
+        evalPhoto
+          ? imageService.uploadImage(evalPhoto, `users/${uid}/onboarding/body-analysis.jpg`)
+          : Promise.resolve(null),
+        profilePhoto
+          ? imageService.uploadImage(profilePhoto, `users/${uid}/profile/avatar.jpg`)
+          : Promise.resolve(null),
+      ]);
 
-      if (evalPhoto) {
-        const uploadPath = `evaluations/${uid}_${Date.now()}.jpg`;
-        evalPhotoUrl = await uploadWithTimeout(evalPhoto, uploadPath) || undefined;
-      }
+      
+      
 
-      if (profilePhoto) {
-        const uploadPath = `profiles/${uid}_${Date.now()}.jpg`;
-        profilePhotoUrl = await uploadWithTimeout(profilePhoto, uploadPath) || undefined;
-      }
 
+
+
+      // ── Etapa 2: Salvar perfil no Firestore ─────────────────────────────────
+      
       await updateProfile({
         name: form.name,
         age: parseInt(form.age),
@@ -254,15 +211,18 @@ export default function Onboarding() {
         physicalRestrictions: form.restrictions,
         preferredExercises: form.likes,
         avoidedExercises: form.dislikes,
-        photoUrl: profilePhotoUrl || undefined,
-        evalPhotoUrl: evalPhotoUrl || undefined,
+        photoUrl: profilePhotoUrl ?? undefined,
+        evalPhotoUrl: evalPhotoUrl ?? undefined,
         onboardingCompleted: true,
       } as any);
 
+      // ── Etapa 3: Navegar para geração do treino ──────────────────────────────
+      
+      
       toast.success("Cadastro finalizado!", { id: toastId });
       navigate("/processing");
     } catch (err) {
-      console.error("Erro ao salvar cadastro:", err);
+      
       const msg = err instanceof Error ? err.message : "Erro ao salvar. Tente novamente.";
       toast.error(msg, { id: toastId });
     } finally {

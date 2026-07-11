@@ -18,6 +18,7 @@ import {
   serverTimestamp,
   increment,
 } from "firebase/firestore";
+import { imageService } from "@/lib/ImageService";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -416,8 +417,31 @@ export const firestoreService = {
       fsLimit(max)
     );
     const snap = await getDocs(q);
-    return snap.docs
-      .map((d) => ({ id: d.id, ...d.data() }) as BodyProgressEntry);
+    const entries = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as BodyProgressEntry);
+
+    // Lógica de migração automática de Base64 para Storage
+    for (const entry of entries) {
+      if (entry.photoUrl && entry.photoUrl.startsWith('data:image')) {
+        console.log(`[Migration] Migrating base64 photo for entry ${entry.id} to Storage...`);
+        try {
+          const storagePath = `users/${userId}/evolution/${entry.id}.jpg`;
+          const newUrl = await imageService.uploadDataUrl(entry.photoUrl, storagePath);
+          
+          // Atualizar Firestore com a nova URL e remover o Base64
+          await updateDoc(doc(db, "users", userId, "bodyProgress", entry.id), {
+            photoUrl: newUrl
+          });
+          
+          // Atualizar o objeto na memória para refletir a mudança imediatamente
+          entry.photoUrl = newUrl;
+          console.log(`[Migration] Successfully migrated entry ${entry.id}`);
+        } catch (err) {
+          console.error(`[Migration] Failed to migrate entry ${entry.id}:`, err);
+        }
+      }
+    }
+
+    return entries;
   },
 
   async deleteBodyProgress(userId: string, entryId: string) {
@@ -600,6 +624,11 @@ export const firestoreService = {
 
   async deleteReminderConfig(userId: string, reminderId: string) {
     await deleteDoc(doc(db, "users", userId, "reminders", reminderId));
+  },
+
+  async updateReminder(userId: string, reminderId: string, updates: Partial<ReminderConfig>) {
+    const docRef = doc(db, "users", userId, "reminders", reminderId);
+    await updateDoc(docRef, updates);
   }
 };
 
