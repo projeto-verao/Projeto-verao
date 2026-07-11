@@ -7,7 +7,8 @@ import {
   Loader2, ChevronRight, Camera, ImageIcon, UserCircle2, CheckCircle2, X
 } from "lucide-react";
 import { toast } from "sonner";
-import { auth } from "@/lib/firebase";
+import { auth, storage } from "@/lib/firebase";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 /**
  * Redimensiona uma imagem para caber no Firestore (limite ~1MB por doc)
@@ -198,23 +199,44 @@ export default function Onboarding() {
     try {
       let evalPhotoUrl: string | undefined = undefined;
       let profilePhotoUrl: string | undefined = undefined;
+      const uid = auth.currentUser?.uid;
+
+      if (!uid) {
+        console.error("[Onboarding] Usuário não autenticado no momento do submit");
+        toast.error("Erro de autenticação. Tente novamente.", { id: toastId });
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Upload com timeout de 15s para evitar travamento indefinido
+      const uploadWithTimeout = async (dataUrl: string, path: string, timeoutMs = 15000): Promise<string | null> => {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+          // uploadFromDataUrl usa fetch internamente — wrap com timeout
+          const response = await fetch(dataUrl);
+          clearTimeout(timeoutId);
+          const blob = await response.blob();
+          const file = new File([blob], path.split("/").pop() || "file.jpg", { type: "image/jpeg" });
+          const storageRef = ref(storage, path);
+          const snapshot = await uploadBytes(storageRef, file);
+          const downloadUrl = await getDownloadURL(snapshot.ref);
+          return downloadUrl;
+        } catch (err) {
+          clearTimeout(timeoutId);
+          console.warn(`[Onboarding] Upload falhou para ${path}:`, err);
+          return null;
+        }
+      };
 
       if (evalPhoto) {
-        try {
-          const uploadPath = `evaluations/${auth.currentUser?.uid}_${Date.now()}.jpg`;
-          evalPhotoUrl = await uploadFromDataUrl(evalPhoto, uploadPath);
-        } catch (uploadError) {
-          console.warn("Erro ao fazer upload da foto de avaliação:", uploadError);
-        }
+        const uploadPath = `evaluations/${uid}_${Date.now()}.jpg`;
+        evalPhotoUrl = await uploadWithTimeout(evalPhoto, uploadPath) || undefined;
       }
 
       if (profilePhoto) {
-        try {
-          const uploadPath = `profiles/${auth.currentUser?.uid}_${Date.now()}.jpg`;
-          profilePhotoUrl = await uploadFromDataUrl(profilePhoto, uploadPath);
-        } catch (uploadError) {
-          console.warn("Erro ao fazer upload da foto de perfil:", uploadError);
-        }
+        const uploadPath = `profiles/${uid}_${Date.now()}.jpg`;
+        profilePhotoUrl = await uploadWithTimeout(profilePhoto, uploadPath) || undefined;
       }
 
       await updateProfile({
