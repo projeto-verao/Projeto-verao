@@ -38,12 +38,17 @@ const trpcClient = trpc.createClient({
 });
 
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').then(registration => {
+  window.addEventListener('load', async () => {
+    try {
+      const registration = await navigator.serviceWorker.register('/sw.js');
       console.log('SW registered: ', registration);
-    }).catch(registrationError => {
+      // Solicitar permissão de notificação automaticamente
+      if ('Notification' in window && Notification.permission === 'default') {
+        await Notification.requestPermission();
+      }
+    } catch (registrationError) {
       console.log('SW registration failed: ', registrationError);
-    });
+    }
   });
 }
 

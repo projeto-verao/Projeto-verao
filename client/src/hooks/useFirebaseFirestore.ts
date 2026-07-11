@@ -596,6 +596,10 @@ export const firestoreService = {
   async updateReminderConfig(userId: string, config: Partial<ReminderConfig> & { id: string }) {
     const docRef = doc(db, "users", userId, "reminders", config.id);
     await setDoc(docRef, config, { merge: true });
+  },
+
+  async deleteReminderConfig(userId: string, reminderId: string) {
+    await deleteDoc(doc(db, "users", userId, "reminders", reminderId));
   }
 };
 

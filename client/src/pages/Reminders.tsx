@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import AppLayout from "@/components/AppLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { firestoreService, ReminderConfig } from "@/hooks/useFirebaseFirestore";
+import { useLocalNotifications, useNotificationPermission, useRecurringReminders } from "@/hooks/useLocalNotifications";
 import { 
   Bell, 
   Droplets, 
@@ -22,7 +23,11 @@ import {
   Volume2,
   Vibrate,
   ChevronLeft,
-  Sparkles
+  Sparkles,
+  Zap,
+  TestTube,
+  BellOff,
+  BellRing
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -53,14 +58,120 @@ const REPETITION_OPTIONS = [
 const HOUR_OPTIONS = [1, 2, 3, 4, 6, 8, 12];
 const DAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
+// ─── Botão de Teste ──────────────────────────────────────────────────────────
+
+function TestNotificationButton() {
+  const { requestPermission } = useNotificationPermission();
+  const { scheduleNotification } = useLocalNotifications();
+  const [testing, setTesting] = useState(false);
+
+  const handleTest = useCallback(async () => {
+    setTesting(true);
+    
+    // Verificar/solicitar permissão
+    const hasPermission = await requestPermission();
+    if (!hasPermission) {
+      toast.error("Permissão de notificação negada. Ative nas configurações do navegador.");
+      setTesting(false);
+      return;
+    }
+
+    // Agendar notificação para 30 segundos
+    const success = await scheduleNotification({
+      reminderId: `test_${Date.now()}`,
+      title: "Teste de Notificação",
+      body: "Se você está vendo isso, os lembretes estão funcionando corretamente!",
+      delayMs: 30000
+    });
+
+    if (success) {
+      toast.success("Notificação agendada para daqui a 30 segundos!");
+      console.log("[Reminders] Teste agendado com sucesso", {
+        scheduled: new Date().toISOString(),
+        deliveryAt: new Date(Date.now() + 30000).toISOString()
+      });
+    } else {
+      toast.error("Erro ao agendar notificação de teste.");
+    }
+    setTesting(false);
+  }, [requestPermission, scheduleNotification]);
+
+  return (
+    <button
+      onClick={handleTest}
+      disabled={testing}
+      className="fixed bottom-24 left-6 right-6 bg-gradient-to-r from-purple-600 to-pink-600 text-white py-4 rounded-2xl font-bold shadow-xl flex items-center justify-center gap-3 hover:from-purple-700 hover:to-pink-700 transition-all disabled:opacity-50"
+    >
+      <TestTube size={20} />
+      {testing ? "AGENDANDO..." : "TESTAR LEMBRETE (30s)"}
+    </button>
+  );
+}
+
+// ─── Status de Permissão ─────────────────────────────────────────────────────
+
+function NotificationPermissionBanner() {
+  const { requestPermission, checkPermission } = useNotificationPermission();
+  const [permission, setPermission] = useState<NotificationPermission>(checkPermission());
+  const [requesting, setRequesting] = useState(false);
+
+  useEffect(() => {
+    setPermission(checkPermission());
+  }, [checkPermission]);
+
+  if (permission === "granted") return null;
+  if (permission === "denied") {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-6 flex items-start gap-3">
+        <BellOff size={20} className="text-red-500 mt-0.5 shrink-0" />
+        <div className="flex-1">
+          <p className="text-sm font-bold text-red-700">Notificações bloqueadas</p>
+          <p className="text-xs text-red-500 mt-1">
+            Para receber lembretes, ative as notificações nas configurações do navegador.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={async () => {
+        setRequesting(true);
+        const granted = await requestPermission();
+        setPermission(granted ? "granted" : checkPermission());
+        setRequesting(false);
+        if (granted) toast.success("Notificações ativadas!");
+      }}
+      disabled={requesting}
+      className="bg-orange-50 border border-orange-200 rounded-2xl p-4 mb-6 flex items-center gap-3 w-full text-left hover:bg-orange-100 transition-colors"
+    >
+      <BellRing size={20} className="text-orange-500 shrink-0" />
+      <div className="flex-1">
+        <p className="text-sm font-bold text-orange-700">
+          {requesting ? "Solicitando permissão..." : "Ativar notificações"}
+        </p>
+        <p className="text-xs text-orange-500 mt-1">
+          Clique para receber lembretes nos horários configurados.
+        </p>
+      </div>
+      <ChevronRight size={16} className="text-orange-400" />
+    </button>
+  );
+}
+
+// ─── Componente Principal ────────────────────────────────────────────────────
+
 export default function Reminders() {
   const { user } = useAuth();
+  const { rescheduleOnAppOpen } = useRecurringReminders();
   const [reminders, setReminders] = useState<ReminderConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedReminder, setSelectedReminder] = useState<ReminderConfig | null>(null);
   const [isConfiguring, setIsConfiguring] = useState(false);
   const [selectedProfile, setSelectedProfile] = useState<'basic' | 'fitness'>('basic');
   const [smartStatus, setSmartStatus] = useState<Record<string, boolean>>({});
+  const [scheduledCount, setScheduledCount] = useState(0);
   
   const initialLoadDone = useRef(false);
 
@@ -82,7 +193,6 @@ export default function Reminders() {
 
     const unsubscribe = firestoreService.subscribeToReminders(user.uid, (configs) => {
       if (configs.length === 0 && !initialLoadDone.current) {
-        // Inicializar com padrões se estiver vazio
         const defaultReminders = REMINDER_TYPES.map(type => ({
           id: type.id,
           type: type.id,
@@ -100,7 +210,6 @@ export default function Reminders() {
         })) as ReminderConfig[];
         firestoreService.saveAllReminders(user.uid, defaultReminders);
       } else {
-        // Mesclar com tipos definidos para garantir que todos existam na UI
         const merged = REMINDER_TYPES.map(type => {
           const existing = configs.find(c => c.id === type.id);
           if (existing) return existing;
@@ -129,6 +238,19 @@ export default function Reminders() {
     return () => unsubscribe();
   }, [user]);
 
+  // ── Reagendar lembretes ao carregar ───────────────────────────────────────
+  useEffect(() => {
+    if (!user || reminders.length === 0 || loading) return;
+    
+    const reschedule = async () => {
+      const count = await rescheduleOnAppOpen(reminders);
+      setScheduledCount(count);
+      console.log(`[Reminders] ${count} lembretes reagendados ao abrir o app`);
+    };
+    reschedule();
+  }, [user, reminders, loading, rescheduleOnAppOpen]);
+
+  // ── Verificar smart status ────────────────────────────────────────────────
   const checkSmartStatus = useCallback(async () => {
     if (!user) return;
     try {
@@ -170,9 +292,7 @@ export default function Reminders() {
   }, [user]);
 
   useEffect(() => {
-    if (user) {
-      checkSmartStatus();
-    }
+    if (user) checkSmartStatus();
   }, [user, checkSmartStatus]);
 
   const toggleReminder = async (id: string) => {
@@ -182,9 +302,21 @@ export default function Reminders() {
     const newStatus = !reminder.enabled;
     
     try {
-      // Otimista: a UI vai atualizar via onSnapshot, mas podemos forçar localmente se quisermos
       await firestoreService.updateReminderConfig(user.uid, { id, enabled: newStatus });
       toast.success(`${reminder.title} ${newStatus ? 'ativado' : 'desativado'}`);
+      
+      // Se ativou, reagendar imediatamente
+      if (newStatus) {
+        const updatedReminder = reminders.map(r => 
+          r.id === id ? { ...r, enabled: true } : r
+        );
+        const count = await rescheduleOnAppOpen(updatedReminder);
+        setScheduledCount(count);
+      } else {
+        // Se desativou, cancelar
+        const sw = await navigator.serviceWorker.ready;
+        sw.active?.postMessage({ type: "CANCEL_NOTIFICATION", reminderId: id });
+      }
     } catch (error: any) {
       console.error("Erro ao atualizar lembrete:", id, error);
       toast.error(`Erro ao salvar alteração para ${reminder.title}`);
@@ -198,6 +330,15 @@ export default function Reminders() {
       setIsConfiguring(false);
       setSelectedReminder(null);
       toast.success("Configuração salva!");
+      
+      // Reagendar com a nova configuração
+      const updatedReminder = reminders.map(r => 
+        r.id === config.id ? config : r
+      );
+      if (config.enabled) {
+        const count = await rescheduleOnAppOpen(updatedReminder);
+        setScheduledCount(count);
+      }
     } catch (error) {
       console.error("Erro ao salvar configuração:", error);
       toast.error("Erro ao salvar configuração");
@@ -236,6 +377,8 @@ export default function Reminders() {
     try {
       setLoading(true);
       await firestoreService.saveAllReminders(user.uid, updated);
+      const count = await rescheduleOnAppOpen(updated);
+      setScheduledCount(count);
       toast.success(`Configuração ${presetType === 'basic' ? 'Básica' : 'Fitness'} aplicada!`);
     } catch (error) {
       toast.error("Erro ao aplicar configuração rápida");
@@ -404,7 +547,7 @@ export default function Reminders() {
 
   return (
     <AppLayout>
-      <div className="p-4 pb-24">
+      <div className="p-4 pb-32">
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-black tracking-tight">LEMBRETES</h1>
@@ -414,6 +557,20 @@ export default function Reminders() {
             <Bell size={24} />
           </div>
         </div>
+
+        {/* Banner de Permissão */}
+        <NotificationPermissionBanner />
+
+        {/* Status dos lembretes agendados */}
+        {scheduledCount > 0 && (
+          <div className="bg-green-50 border border-green-200 rounded-2xl p-4 mb-6 flex items-center gap-3">
+            <Zap size={20} className="text-green-500 shrink-0" />
+            <div>
+              <p className="text-sm font-bold text-green-700">{scheduledCount} lembrete{scheduledCount > 1 ? 's' : ''} agendado{scheduledCount > 1 ? 's' : ''}</p>
+              <p className="text-xs text-green-500 mt-0.5">Notificações ativas e funcionando</p>
+            </div>
+          </div>
+        )}
 
         {/* Abas de Categoria */}
         <div className="flex gap-2 mb-6 bg-gray-100 p-1.5 rounded-2xl">
@@ -431,8 +588,7 @@ export default function Reminders() {
           </button>
         </div>
 
-
-
+        {/* Lista de Lembretes */}
         <div className="space-y-4">
           {filteredReminders.map((reminder) => {
             const type = REMINDER_TYPES.find(t => t.id === reminder.id);
@@ -496,6 +652,9 @@ export default function Reminders() {
             );
           })}
         </div>
+
+        {/* Botão de Teste */}
+        <TestNotificationButton />
       </div>
     </AppLayout>
   );
