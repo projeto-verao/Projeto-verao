@@ -1,7 +1,13 @@
-// ─── Projeto Verão – Service Worker com Notificações Locais ───────────────────
-// v2.0.0 – Agendamento local + Push + Click + Periodic Background Sync
+// ─── Projeto Verão – Service Worker v3.0 ──────────────────────────────────────
+// Suporte: FCM Push (nativo Android) + Notificações Locais + Agendamento
+// 
+// FCM Push: Recebe notificações nativas do Android via Google Play Services
+// mesmo com o app completamente fechado ou após reiniciar o dispositivo.
+//
+// Notificações Locais: Agendamento via postMessage do cliente (fallback).
+// Ambos coexistem: FCM é o canal principal, local é fallback.
 
-const CACHE_NAME = 'projeto-verao-v2';
+const CACHE_NAME = 'projeto-verao-v3';
 
 // ── Caching ──────────────────────────────────────────────────────────────────
 
@@ -41,25 +47,49 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// ── Notificações Push ────────────────────────────────────────────────────────
+// ── FCM Push Notifications (Nativo Android) ──────────────────────────────────
+// Este é o handler PRINCIPAL para notificações do Android.
+// O Firebase Cloud Messaging envia o push através do Google Play Services
+// e o SW recebe aqui mesmo com o app fechado.
 
 self.addEventListener('push', (event) => {
-  const data = event.data ? event.data.json() : {};
-  const title = data.title || 'Projeto Verão';
+  let data = {};
+  if (event.data) {
+    try {
+      data = event.data.json();
+    } catch (e) {
+      data = { notification: { title: 'Projeto Verão' } };
+    }
+  }
+
+  // O FCM pode enviar em dois formatos:
+  // 1. data.notification (payload de notificação)
+  // 2. data.data (dados customizados)
+  const notificationData = data.notification || {};
+  const customData = data.data || {};
+  
+  const title = notificationData.title || customData.title || 'Projeto Verão';
+  const body = notificationData.body || customData.body || customData.message || 'Hora de focar nos seus objetivos!';
+  const reminderId = customData.reminderId || customData.type || '';
+  const url = customData.url || '/';
+
   const options = {
-    body: data.body || 'Hora de focar nos seus objetivos!',
+    body: body,
     icon: '/icons/icon-192x192.png',
     badge: '/icons/icon-72x72.png',
     vibrate: [100, 50, 100],
+    tag: reminderId || 'projeto_verao', // Evita duplicatas
     data: {
-      url: data.url || '/',
-      reminderId: data.reminderId || '',
-      type: data.type || 'push'
+      url: url,
+      reminderId: reminderId,
+      type: 'fcm'
     }
   };
 
   event.waitUntil(
-    self.registration.showNotification(title, options)
+    self.registration.showNotification(title, options).then(() => {
+      console.log('[FCM] Notificação nativa exibida:', title);
+    })
   );
 });
 
@@ -67,18 +97,27 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+  const url = event.notification.data.url || '/';
+  
   event.waitUntil(
-    clients.openWindow(event.notification.data.url || '/')
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // Se já há uma aba aberta, focar nela
+      if (clientList.length > 0) {
+        const client = clientList[0];
+        client.navigate(url);
+        client.focus();
+      } else {
+        // Se não, abrir nova aba
+        return clients.openWindow(url);
+      }
+    })
   );
 });
 
-// ── Agendamento Local de Notificações ────────────────────────────────────────
-// O service worker recebe mensagens do cliente via postMessage para agendar
-// notificações locais. O agendamento é feito com setTimeout no contexto do SW.
-// NOTA: O SW pode ser terminado pelo navegador. Para persistência, o cliente
-// reagenda ao reabrir o app.
+// ── Agendamento Local de Notificações (Fallback) ─────────────────────────────
+// Usado como fallback quando FCM não está disponível.
+// O SW pode ser terminado pelo navegador, então o cliente reagenda ao reabrir.
 
-// Armazenar timers ativos no contexto do SW
 const activeTimers = new Map();
 
 self.addEventListener('message', (event) => {
@@ -86,7 +125,7 @@ self.addEventListener('message', (event) => {
 
   switch (type) {
     case 'SCHEDULE_NOTIFICATION': {
-      const { reminderId, title, body, delayMs, options } = payload;
+      const { reminderId, title, body, delayMs } = payload;
       const timerId = `notif_${reminderId}_${Date.now()}`;
       
       const timer = setTimeout(async () => {
@@ -95,22 +134,15 @@ self.addEventListener('message', (event) => {
           icon: '/icons/icon-192x192.png',
           badge: '/icons/icon-72x72.png',
           vibrate: [100, 50, 100],
-          tag: reminderId, // Evita duplicatas: substitui notificação anterior com mesma tag
-          data: {
-            url: '/',
-            reminderId: reminderId,
-            type: 'local'
-          }
+          tag: reminderId,
+          data: { url: '/', reminderId: reminderId, type: 'local' }
         });
         activeTimers.delete(timerId);
-        // Notificar o cliente que a notificação foi disparada
+        
+        // Notificar cliente que a notificação foi disparada
         const clientList = await clients.matchAll({ type: 'window' });
         for (const client of clientList) {
-          client.postMessage({
-            type: 'NOTIFICATION_DELIVERED',
-            reminderId: reminderId,
-            timestamp: Date.now()
-          });
+          client.postMessage({ type: 'NOTIFICATION_DELIVERED', reminderId, timestamp: Date.now() });
         }
       }, delayMs);
 
@@ -119,8 +151,8 @@ self.addEventListener('message', (event) => {
       // Confirmar ao cliente
       event.source?.postMessage({
         type: 'SCHEDULE_CONFIRMED',
-        reminderId: reminderId,
-        timerId: timerId,
+        reminderId,
+        timerId,
         deliveryAt: Date.now() + delayMs
       });
       break;
@@ -146,37 +178,30 @@ self.addEventListener('message', (event) => {
     }
 
     case 'GET_ACTIVE_SCHEDULES': {
-      event.source?.postMessage({
-        type: 'ACTIVE_SCHEDULES',
-        count: activeTimers.size
-      });
+      event.source?.postMessage({ type: 'ACTIVE_SCHEDULES', count: activeTimers.size });
       break;
     }
   }
 });
 
-// ── Periodic Background Sync (quando suportado) ──────────────────────────────
+// ── Periodic Background Sync ─────────────────────────────────────────────────
 
 self.addEventListener('periodicsync', (event) => {
   if (event.tag === 'check-reminders') {
-    event.waitUntil(
-      checkRemindersInBackground()
-    );
+    event.waitUntil(checkRemindersInBackground());
   }
 });
 
 async function checkRemindersInBackground() {
-  // Buscar lembretes do Firestore e disparar notificações
   const clientList = await clients.matchAll({ type: 'window' });
   if (clientList.length > 0) {
-    // Se há abas abertas, delegar ao cliente
     for (const client of clientList) {
       client.postMessage({ type: 'TRIGGER_BACKGROUND_CHECK' });
     }
   }
 }
 
-// ── Logging em modo desenvolvimento ──────────────────────────────────────────
+// ── Logging ──────────────────────────────────────────────────────────────────
 
 function logDebug(message, data) {
   console.log(`[SW] ${message}`, data || '');
