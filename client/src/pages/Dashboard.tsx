@@ -5,7 +5,7 @@ import AppLayout from "@/components/AppLayout";
 import { geminiService } from "@/lib/gemini";
 import { firestoreService, StoredWorkout, ExerciseLoadEntry } from "@/hooks/useFirebaseFirestore";
 import {
-  Utensils, Target, RefreshCw, Loader2, ChevronRight, Timer, X, Sparkles, Activity, Trash2, CheckCircle2, Play, Trophy, Info, Weight
+  Utensils, Target, RefreshCw, Loader2, ChevronRight, Timer, X, Sparkles, Activity, Trash2, CheckCircle2, Play, Trophy, Info, Weight, AlertTriangle, TrendingDown, Award, AlertCircle
 } from "lucide-react";
 import { toast } from "sonner";
 import { Timestamp } from "firebase/firestore";
@@ -46,6 +46,11 @@ export default function Dashboard() {
     duration: string;
     nextWorkout: string;
     nextTiming: string;
+    percentCompleted: number;
+    completedExercisesList: string[];
+    pendingExercisesList: string[];
+    lessStimulatedMuscles: string[];
+    messageTier: "none" | "partial" | "almost" | "full";
   } | null>(null);
 
   // ── Estado do Modal de Vídeo ──────────────────────────────────────────────
@@ -192,6 +197,115 @@ export default function Dashboard() {
     }
   };
 
+  // ── Mapeamento de exercícios para grupos musculares ────────────────────────
+  const getExerciseMuscleGroup = (exerciseName: string): string => {
+    const name = exerciseName.toLowerCase().trim();
+    if (name.includes("supino") || name.includes("peitoral") || name.includes("fly") || name.includes("crossover") || name.includes("crucifixo") || name.includes("pullover") || name.includes("puxada") || name.includes("remada") || name.includes("barra fixa") || name.includes("flexão")) return "Peitoral/Costas";
+    if (name.includes("ombro") || name.includes("desenvolvimento") || name.includes("eleva") || name.includes("lateral") || name.includes("frontal") || name.includes("deltóide") || name.includes("delta") || name.includes("shrug") || name.includes("trapézio")) return "Ombros/Trapézio";
+    if (name.includes("rosca") || name.includes("bíceps") || name.includes("martelo") || name.includes("concentrada") || name.includes("scott") || name.includes("preacher")) return "Bíceps";
+    if (name.includes("tríceps") || name.includes("frances") || name.includes("francês") || name.includes("coice") || name.includes("corda") || name.includes("testa")) return "Tríceps";
+    if (name.includes("agachamento") || name.includes("leg press") || name.includes("hack") || name.includes("extensão") || name.includes("cadeira extensor") || name.includes("quadríceps")) return "Quadríceps";
+    if (name.includes("terra") || name.includes("stiff") || name.includes("mesa flexora") || name.includes("cad") || name.includes("nórdico") || name.includes("isquiotibial") || name.includes("posterior")) return "Isquiotibiais/Posterior";
+    if (name.includes("panturrilha") || name.includes("gêmeo") || name.includes("soleo") || name.includes("sóleo")) return "Panturrilha";
+    if (name.includes("abdômen") || name.includes("abdominal") || name.includes("prancha") || name.includes("obliquo") || name.includes("oblíquo") || name.includes("elevação") || name.includes("leg raise") || name.includes("crunch")) return "Abdômen";
+    if (name.includes("glúteo") || name.includes("gluteo") || name.includes("elevação") || name.includes("eleva") || name.includes("bulgarian") || name.includes("afundo") || name.includes("passada")) return "Glúteos";
+    return "Geral";
+  };
+
+  // ── Calcular percentual de conclusão baseado em séries completas ───────────
+  const calculateCompletionPercent = (dayNumber: number): { 
+    percent: number; 
+    totalSets: number; 
+    completedSets: number;
+    completedExercises: string[];
+    pendingExercises: string[];
+    muscleStimulation: Record<string, number>;
+  } => {
+    if (!activeWorkout) return { percent: 0, totalSets: 0, completedSets: 0, completedExercises: [], pendingExercises: [], muscleStimulation: {} };
+    
+    const day = activeWorkout.days.find(d => d.dayNumber === dayNumber);
+    if (!day) return { percent: 0, totalSets: 0, completedSets: 0, completedExercises: [], pendingExercises: [], muscleStimulation: {} };
+
+    let totalSets = 0;
+    let completedSetCount = 0;
+    const completedExercises: string[] = [];
+    const pendingExercises: string[] = [];
+    const muscleStimulation: Record<string, { total: number; done: number }> = {};
+
+    day.exercises.forEach((ex, idx) => {
+      totalSets += ex.sets;
+      let exerciseDone = false;
+      for (let sIdx = 0; sIdx < ex.sets; sIdx++) {
+        const key = `${dayNumber}-${idx}-${sIdx}`;
+        if (completedSets[key]) {
+          completedSetCount++;
+          exerciseDone = true;
+        }
+      }
+      if (exerciseDone) {
+        completedExercises.push(ex.name);
+      } else {
+        pendingExercises.push(ex.name);
+      }
+
+      const muscleGroup = getExerciseMuscleGroup(ex.name);
+      if (!muscleStimulation[muscleGroup]) {
+        muscleStimulation[muscleGroup] = { total: 0, done: 0 };
+      }
+      muscleStimulation[muscleGroup].total += ex.sets;
+      if (exerciseDone) {
+        muscleStimulation[muscleGroup].done += ex.sets;
+      }
+    });
+
+    const percent = totalSets > 0 ? Math.round((completedSetCount / totalSets) * 100) : 0;
+    
+    const musclePercent: Record<string, number> = {};
+    Object.entries(muscleStimulation).forEach(([muscle, data]) => {
+      musclePercent[muscle] = data.total > 0 ? Math.round((data.done / data.total) * 100) : 0;
+    });
+
+    return { percent, totalSets, completedSets: completedSetCount, completedExercises, pendingExercises, muscleStimulation: musclePercent };
+  };
+
+  // ── Gerar mensagem automática por faixa (SEM IA) ──────────────────────────
+  const getCompletionMessage = (percent: number): { 
+    tier: "none" | "partial" | "almost" | "full";
+    title: string;
+    message: string;
+    icon: "trophy" | "award" | "alert" | "target";
+  } => {
+    if (percent === 0) {
+      return {
+        tier: "none",
+        title: "Treino Não Concluído",
+        message: "Nenhum exercício foi concluído. Seu treino continua pendente. Quando estiver pronto, você pode continuar de onde parou.",
+        icon: "alert"
+      };
+    } else if (percent <= 50) {
+      return {
+        tier: "partial",
+        title: "Parte do Treino Concluída",
+        message: "Você completou uma parte do treino. Sabemos que nem sempre temos tempo suficiente. Se precisar, use o IA Trainer para adaptar o treino ao tempo disponível.",
+        icon: "target"
+      };
+    } else if (percent < 100) {
+      return {
+        tier: "almost",
+        title: "Ótimo Trabalho!",
+        message: "Você completou a maior parte do treino. Alguns exercícios ficaram pendentes.",
+        icon: "award"
+      };
+    } else {
+      return {
+        tier: "full",
+        title: "Treino Completo!",
+        message: "Treino completo concluído! Excelente evolução.",
+        icon: "trophy"
+      };
+    }
+  };
+
   // ── Concluir dia de treino ─────────────────────────────────────────────────
   const handleCompleteDay = async (dayNumber: number) => {
     if (!user || !activeWorkout || !workoutStartTime) return;
@@ -203,18 +317,59 @@ export default function Dashboard() {
     const durationSeconds = Math.floor((endTime - workoutStartTime) / 1000);
     const durationText = formatDuration(durationSeconds);
 
+    // Calcular percentual real de conclusão
+    const completionData = calculateCompletionPercent(dayNumber);
+    const percentCompleted = completionData.percent;
+    const messageInfo = getCompletionMessage(percentCompleted);
+
+    // Se nenhum exercício foi concluído, NÃO registrar como concluído
+    if (percentCompleted === 0) {
+      // Apenas limpar o cronômetro sem registrar conclusão
+      setIsTraining(false);
+      setWorkoutStartTime(null);
+      setElapsedSeconds(0);
+      localStorage.removeItem(`workout_active_${user.uid}`);
+      localStorage.removeItem(`workout_start_${user.uid}`);
+      localStorage.removeItem(`workout_day_${user.uid}`);
+      setSelectedDay(null);
+      setCompletedSets({});
+      setRestTimer(null);
+
+      setCompletionSummary({
+        duration: durationText,
+        nextWorkout: day.title || `Dia ${day.dayNumber}`,
+        nextTiming: "Treino pendente",
+        percentCompleted: 0,
+        completedExercisesList: [],
+        pendingExercisesList: day.exercises.map(ex => ex.name),
+        lessStimulatedMuscles: [],
+        messageTier: "none"
+      });
+      setShowCompletionModal(true);
+      return;
+    }
+
     // Coletar cargas dos exercícios deste dia
     const loads: ExerciseLoadEntry[] = day.exercises.map(ex => ({
       exerciseName: ex.name,
       loadKg: parseFloat(exerciseLoads[ex.name.toLowerCase()] || "0")
     })).filter(l => l.loadKg > 0);
 
+    // Identificar músculos com menor estímulo (menor percentual)
+    const muscleStimPercent = completionData.muscleStimulation;
+    const lessStimulatedMuscles: string[] = Object.entries(muscleStimPercent)
+      .sort((a, b) => a[1] - b[1])
+      .filter(([_, percent]) => percent < 100)
+      .slice(0, 3)
+      .map(([muscle]) => muscle);
+
     try {
+      // Registrar conclusão no Firestore
       await firestoreService.addWorkoutCompletion(user.uid, {
         workoutId: activeWorkout.id,
         day: dayNumber,
-        completedExercises: day.exercises.length,
-        totalExercises: day.exercises.length,
+        completedExercises: completionData.completedSets,
+        totalExercises: completionData.totalSets,
         duration: durationSeconds,
         startTime: Timestamp.fromMillis(workoutStartTime),
         endTime: Timestamp.fromMillis(endTime),
@@ -257,7 +412,12 @@ export default function Dashboard() {
       setCompletionSummary({
         duration: durationText,
         nextWorkout: nextTitle,
-        nextTiming: nextTiming
+        nextTiming: nextTiming,
+        percentCompleted,
+        completedExercisesList: completionData.completedExercises,
+        pendingExercisesList: completionData.pendingExercises,
+        lessStimulatedMuscles,
+        messageTier: messageInfo.tier
       });
       setShowCompletionModal(true);
 
@@ -384,33 +544,129 @@ export default function Dashboard() {
       )}
 
       {/* Completion Modal */}
-      {showCompletionModal && completionSummary && (
-        <div className="fixed inset-0 z-[120] bg-black/80 flex items-center justify-center p-6 backdrop-blur-sm">
-          <div className="bg-white rounded-[40px] p-8 w-full max-w-sm text-center animate-in zoom-in-95 duration-300">
-            <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <Trophy size={48} className="text-green-500" />
-            </div>
-            <h3 className="font-black text-gray-900 text-2xl mb-2">🎉 PARABÉNS!</h3>
-            <p className="text-gray-600 mb-6 leading-relaxed">
-              Você concluiu o treino de hoje!<br/>
-              <span className="font-bold text-gray-900">Tempo total: {completionSummary.duration}.</span>
-            </p>
-            
-            <div className="bg-gray-50 rounded-3xl p-5 mb-8 text-left border border-gray-100">
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Próximo Desafio</p>
-              <p className="font-black text-gray-900">{completionSummary.nextWorkout}</p>
-              <p className="text-xs text-orange-500 font-bold">{completionSummary.nextTiming}</p>
-            </div>
+      {showCompletionModal && completionSummary && (() => {
+        const msgInfo = getCompletionMessage(completionSummary.percentCompleted);
+        return (
+          <div className="fixed inset-0 z-[120] bg-black/80 flex items-center justify-center p-6 backdrop-blur-sm">
+            <div className="bg-white rounded-[40px] p-6 w-full max-w-sm animate-in zoom-in-95 duration-300 max-h-[85vh] overflow-y-auto">
+              {/* Ícone e Título */}
+              <div className="text-center mb-4">
+                {msgInfo.icon === "trophy" && (
+                  <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Trophy size={40} className="text-green-500" />
+                  </div>
+                )}
+                {msgInfo.icon === "award" && (
+                  <div className="w-20 h-20 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Award size={40} className="text-orange-500" />
+                  </div>
+                )}
+                {msgInfo.icon === "target" && (
+                  <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Target size={40} className="text-blue-500" />
+                  </div>
+                )}
+                {msgInfo.icon === "alert" && (
+                  <div className="w-20 h-20 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <AlertTriangle size={40} className="text-yellow-500" />
+                  </div>
+                )}
+                <h3 className="font-black text-gray-900 text-xl mb-2">{msgInfo.title}</h3>
+                <p className="text-gray-500 text-sm leading-relaxed">{msgInfo.message}</p>
+              </div>
 
-            <button
-              onClick={() => setShowCompletionModal(false)}
-              className="w-full bg-black text-white py-5 rounded-3xl font-bold shadow-xl active:scale-95 transition-all"
-            >
-              FECHAR
-            </button>
+              {/* Barra de progresso e percentual */}
+              {completionSummary.percentCompleted > 0 && (
+                <div className="bg-gray-50 rounded-2xl p-4 mb-4 border border-gray-100">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Progresso do Treino</span>
+                    <span className="text-lg font-black text-gray-900">{completionSummary.percentCompleted}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-700 ${
+                        completionSummary.percentCompleted === 100 ? "bg-green-500" :
+                        completionSummary.percentCompleted >= 51 ? "bg-orange-500" :
+                        "bg-blue-500"
+                      }`}
+                      style={{ width: `${completionSummary.percentCompleted}%` }}
+                    />
+                  </div>
+                  <p className="text-[10px] text-gray-400 mt-2 font-bold uppercase tracking-widest">
+                    Tempo: {completionSummary.duration}
+                  </p>
+                </div>
+              )}
+
+              {/* Exercícios realizados */}
+              {completionSummary.completedExercisesList.length > 0 && (
+                <div className="mb-4">
+                  <p className="text-[10px] font-bold text-green-600 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                    <CheckCircle2 size={12} />
+                    Exercícios Realizados ({completionSummary.completedExercisesList.length})
+                  </p>
+                  <div className="space-y-1.5 max-h-24 overflow-y-auto">
+                    {completionSummary.completedExercisesList.map((ex, i) => (
+                      <div key={i} className="text-xs text-gray-700 font-medium bg-green-50 px-3 py-1.5 rounded-xl border border-green-100">
+                        {ex}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Exercícios pendentes */}
+              {completionSummary.pendingExercisesList.length > 0 && (
+                <div className="mb-4">
+                  <p className="text-[10px] font-bold text-red-500 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                    <AlertCircle size={12} />
+                    Exercícios Pendentes ({completionSummary.pendingExercisesList.length})
+                  </p>
+                  <div className="space-y-1.5 max-h-24 overflow-y-auto">
+                    {completionSummary.pendingExercisesList.map((ex, i) => (
+                      <div key={i} className="text-xs text-gray-700 font-medium bg-red-50 px-3 py-1.5 rounded-xl border border-red-100">
+                        {ex}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Músculos com menor estímulo */}
+              {completionSummary.lessStimulatedMuscles.length > 0 && completionSummary.percentCompleted < 100 && (
+                <div className="mb-4">
+                  <p className="text-[10px] font-bold text-orange-500 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                    <TrendingDown size={12} />
+                    Menor Estímulo Muscular
+                  </p>
+                  <div className="space-y-1.5">
+                    {completionSummary.lessStimulatedMuscles.map((muscle, i) => (
+                      <div key={i} className="text-xs text-gray-700 font-medium bg-orange-50 px-3 py-1.5 rounded-xl border border-orange-100 flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-orange-400" />
+                        {muscle}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Próximo Desafio */}
+              <div className="bg-gray-50 rounded-2xl p-4 mb-4 text-left border border-gray-100">
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Próximo Desafio</p>
+                <p className="font-black text-gray-900 text-sm">{completionSummary.nextWorkout}</p>
+                <p className="text-xs text-orange-500 font-bold">{completionSummary.nextTiming}</p>
+              </div>
+
+              <button
+                onClick={() => setShowCompletionModal(false)}
+                className="w-full bg-black text-white py-4 rounded-3xl font-bold shadow-xl active:scale-95 transition-all"
+              >
+                FECHAR
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Delete Confirmation Modal */}
       {confirmDelete && (
