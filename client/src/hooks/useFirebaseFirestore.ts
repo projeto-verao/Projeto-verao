@@ -179,9 +179,16 @@ function startOfWeek(): number {
   const d = new Date();
   const day = d.getDay(); // 0 = domingo
   const diff = day === 0 ? 6 : day - 1; // semana começa segunda
-  d.setDate(d.getDate() - diff);
   d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - diff);
   return d.getTime();
+}
+
+function getCurrentWeekNumber(): number {
+  const d = new Date();
+  const onejan = new Date(d.getFullYear(), 0, 1);
+  const weekNum = Math.ceil((((d.getTime() - onejan.getTime()) / 86400000) + onejan.getDay() + 1) / 7);
+  return weekNum;
 }
 
 // ─── Serviço ──────────────────────────────────────────────────────────────────
@@ -590,4 +597,10 @@ export const firestoreService = {
     const docRef = doc(db, "users", userId, "reminders", config.id);
     await setDoc(docRef, config, { merge: true });
   }
+};
+
+// Exportar funções auxiliares para uso em outros componentes
+export const dateHelpers = {
+  getCurrentWeekNumber,
+  startOfWeek,
 };

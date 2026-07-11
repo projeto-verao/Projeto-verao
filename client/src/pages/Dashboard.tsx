@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import AppLayout from "@/components/AppLayout";
 import { geminiService } from "@/lib/gemini";
-import { firestoreService, StoredWorkout, ExerciseLoadEntry } from "@/hooks/useFirebaseFirestore";
+import { firestoreService, dateHelpers, StoredWorkout, ExerciseLoadEntry } from "@/hooks/useFirebaseFirestore";
 import {
   Utensils, Target, RefreshCw, Loader2, ChevronRight, Timer, X, Sparkles, Activity, Trash2, CheckCircle2, Play, Trophy, Info, Weight, AlertTriangle, TrendingDown, Award, AlertCircle
 } from "lucide-react";
@@ -33,7 +33,8 @@ export default function Dashboard() {
   const [workoutLoading, setWorkoutLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [weekCompleted, setWeekCompleted] = useState(0);
-  const [currentWeek, setCurrentWeek] = useState(1);
+  // currentWeek é calculado dinamicamente pelo número da semana ISO
+  const currentWeek = dateHelpers.getCurrentWeekNumber();
   const [confirmDelete, setConfirmDelete] = useState(false);
   
   // ── Estados do Cronômetro de Treino ────────────────────────────────────────
@@ -403,7 +404,9 @@ export default function Dashboard() {
       if (hasMoreDaysThisWeek) {
         const nextDay = days[nextDayIndex];
         nextTitle = nextDay.title || `Treino do dia ${nextDay.dayNumber}`;
-        nextTiming = (weekCompleted + 1 < target) ? "Amanhã" : "Na próxima semana";
+        // Se a semana está completa (weekCompleted >= target), próximo é na nova semana
+        const isWeekFull = weekCompleted >= target;
+        nextTiming = isWeekFull ? "Na próxima semana" : "Amanhã";
       } else {
         nextTitle = days[0]?.title || "Dia 1";
         nextTiming = "Início de um novo ciclo!";
