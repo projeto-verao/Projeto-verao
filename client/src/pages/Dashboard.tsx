@@ -719,17 +719,33 @@ export default function Dashboard() {
                 <h3 className="text-xs font-bold text-white/50 uppercase tracking-widest mb-1">Progresso Semanal</h3>
                 <p className="text-2xl font-black">SEMANA {currentWeek}</p>
               </div>
-              <span className="text-orange-500 font-black text-xl">{Math.min(weekCompleted, target)}/{target}</span>
+              <span className="text-orange-500 font-black text-xl">{Math.min(weekCompleted, 4)}/4</span>
             </div>
-            <div className="flex gap-2 mb-2">
-              {Array.from({ length: target }).map((_, i) => (
-                <div key={i} className={`h-2.5 flex-1 rounded-full ${i < weekCompleted ? "bg-orange-500" : "bg-white/10"}`} />
-              ))}
+
+            {/* Sequência compacta A-B-C-D com indicadores ✓/○ */}
+            <div className="flex items-center gap-3 mb-2">
+              {['A', 'B', 'C', 'D'].map((letter, index) => {
+                const dayNumber = index + 1;
+                const isCompleted = weekCompleted >= dayNumber;
+                return (
+                  <div key={letter} className="flex items-center gap-1.5">
+                    <span className={`text-sm font-black transition-colors ${isCompleted ? 'text-green-400' : 'text-white/30'}`}>
+                      {isCompleted ? '✓' : '○'}
+                    </span>
+                    <span className={`text-base font-black tracking-wide transition-colors ${isCompleted ? 'text-green-400' : 'text-white/60'}`}>
+                      {letter}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
+
             <p className="text-[10px] text-white/40 font-medium">
-              {weekCompleted >= target
-                ? "Meta da semana batida! Nova semana iniciada. 🎉"
-                : `Faltam ${target - weekCompleted} treinos para bater sua meta!`}
+              {weekCompleted >= 4
+                ? "Ciclo completo! Novo ciclo iniciado. 🎉"
+                : weekCompleted > 0
+                ? `${4 - weekCompleted} treino${4 - weekCompleted > 1 ? 's' : ''} restantes no ciclo`
+                : "Inicie seu treino para começar o ciclo!"}
             </p>
           </div>
           <div className="absolute -right-4 -bottom-4 opacity-10">
