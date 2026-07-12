@@ -1,14 +1,12 @@
 /**
  * storage.ts — Módulo de armazenamento do Projeto Verão.
  *
- * Migrado de Manus Forge/S3 para armazenamento baseado em data URLs.
- * Para produção com Firebase Storage, configure o Firebase Admin SDK
- * separadamente e implemente o upload via Firebase Console ou CLI.
+ * Migrado para Cloudinary.
  *
  * Estratégia atual:
- * - Imagens em base64 são armazenadas como data URLs no Firestore
- * - Isso funciona para desenvolvimento e testes
- * - Para produção, recomenda-se usar Firebase Storage Client SDK no frontend
+ * - O frontend faz upload direto para o Cloudinary via ImageService/CloudinaryService.
+ * - Este módulo no servidor é mantido apenas para compatibilidade com geração de imagens por IA
+ *   que ainda retornam Data URLs temporárias.
  */
 import { randomUUID } from "crypto";
 
@@ -23,8 +21,8 @@ function appendHashSuffix(relKey: string): string {
  * Faz upload de um arquivo e retorna a URL de acesso.
  * 
  * Atualmente retorna uma data URL para compatibilidade com o fluxo existente.
- * Para produção, o upload de imagens deve ser feito diretamente pelo cliente
- * usando o Firebase Storage SDK (uploadBytes + getDownloadURL).
+ * Para produção, o upload de imagens de usuários deve ser feito diretamente pelo cliente
+ * usando o CloudinaryService no frontend.
  */
 export async function storagePut(
   relKey: string,

@@ -13,8 +13,8 @@ A publicação do Projeto Verão é feita via Firebase Hosting, utilizando o `fi
 ## Débitos Técnicos e Melhorias Sugeridas
 
 1. **Variáveis de Ambiente no Build:**
-   - **Status:** O `.env.example` ainda contém variáveis legadas (OAuth Manus, AWS S3) que não são mais usadas. A única variável essencial para o build atual é `VITE_GEMINI_API_KEY`.
-   - **Ação:** Para publicar, é necessário criar um arquivo `.env.production` contendo apenas `VITE_GEMINI_API_KEY=seu_chave_gemini`. O build do Vite injetará essa variável no código frontend.
+   - **Status:** O `.env.example` foi atualizado para remover variáveis legadas (AWS S3) e incluir as necessárias para o Cloudinary. As variáveis essenciais para o build atual são `VITE_GEMINI_API_KEY`, `VITE_CLOUDINARY_CLOUD_NAME` e `VITE_CLOUDINARY_UPLOAD_PRESET`.
+   - **Ação:** Para publicar, é necessário criar um arquivo `.env.production` contendo essas chaves. O build do Vite injetará essas variáveis no código frontend.
 
 2. **Deploy Completo:**
    - **Status:** Atualmente o repositório não possui um arquivo `.env.production`.
@@ -22,6 +22,8 @@ A publicação do Projeto Verão é feita via Firebase Hosting, utilizando o `fi
      ```bash
      # 1. Crie o .env.production
      echo "VITE_GEMINI_API_KEY=SUA_CHAVE_GEMINI" > .env.production
+     echo "VITE_CLOUDINARY_CLOUD_NAME=SEU_CLOUD_NAME" >> .env.production
+     echo "VITE_CLOUDINARY_UPLOAD_PRESET=SEU_UPLOAD_PRESET" >> .env.production
      
      # 2. Faça o build
      npm run build

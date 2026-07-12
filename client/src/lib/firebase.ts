@@ -1,14 +1,14 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
+// import { getStorage } from "firebase/storage"; // Removido: migrado para Cloudinary
 import { getMessaging } from "firebase/messaging";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCW1fXp4QgW6k7zV7L9IW3c2CX9JGRu4v0",
   authDomain: "projeto-verao-3a6a1.firebaseapp.com",
   projectId: "projeto-verao-3a6a1",
-  storageBucket: "projeto-verao-3a6a1.firebasestorage.app",
+  // storageBucket: "projeto-verao-3a6a1.firebasestorage.app", // Removido: migrado para Cloudinary
   messagingSenderId: "345477225478",
   appId: "1:345477225478:web:f7411381143f218d5a3787"
 };
@@ -26,7 +26,7 @@ export const db = initializeFirestore(app, {
   }),
 });
 
-export const storage = getStorage(app);
+// export const storage = getStorage(app); // Removido: migrado para Cloudinary
 
 // Initialize Firebase Cloud Messaging (FCM)
 // Nota: O FCM no web requer um VAPID key. A messagingSenderId acima permite

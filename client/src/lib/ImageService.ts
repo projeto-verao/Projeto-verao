@@ -1,6 +1,4 @@
-import { storage } from "@/lib/firebase";
-import { ref, getDownloadURL, uploadBytesResumable } from "firebase/storage";
-import { auth } from "@/lib/firebase";
+import { cloudinaryService } from "./cloudinary";
 
 /**
  * Redimensiona uma imagem para caber no Firestore (limite ~1MB por doc)
@@ -48,16 +46,17 @@ interface UploadOptions {
   timeoutMs?: number;
   retries?: number;
   onProgress?: (progress: number) => void;
+  folder?: string;
 }
 
 export const imageService = {
   resizeImage,
   
   /**
-   * Faz upload de uma imagem (Data URL) para o Firebase Storage com retry e timeout.
+   * Faz upload de uma imagem (Data URL) para o Cloudinary com retry e timeout.
    * @param dataUrl - Data URL da imagem (base64)
-   * @param path - Caminho no Firebase Storage (ex: "users/{uid}/profile/avatar.jpg")
-   * @param options - Opções de upload (timeout, retries, onProgress)
+   * @param path - Caminho original (agora usado para determinar a pasta no Cloudinary)
+   * @param options - Opções de upload (timeout, retries, onProgress, folder)
    * @returns URL de download pública, ou null em caso de falha
    */
   uploadImage: async (
@@ -65,54 +64,34 @@ export const imageService = {
     path: string,
     options?: UploadOptions
   ): Promise<string | null> => {
-    const { timeoutMs = 30000, retries = 3, onProgress } = options || {};
+    const { timeoutMs = 30000, retries = 3, folder } = options || {};
 
-    if (!auth.currentUser) {
-      console.error("[ImageService] Usuário não autenticado para upload.");
-      return null;
+    // Determinar pasta baseada no path se não fornecida
+    let targetFolder = folder;
+    if (!targetFolder) {
+      if (path.includes("profile")) targetFolder = "profiles";
+      else if (path.includes("evolution")) targetFolder = "evolution";
+      else if (path.includes("onboarding")) targetFolder = "onboarding";
+      else targetFolder = "general";
     }
 
     for (let i = 0; i <= retries; i++) {
       try {
-        console.log(`[ImageService] Tentativa ${i + 1} de ${retries + 1} para upload de ${path}`);
-        const blob = await dataUrlToBlob(dataUrl);
-        const fileName = path.split("/").pop() || "file.jpg";
-        const file = new File([blob], fileName, { type: blob.type });
-
-        const storageRef = ref(storage, path);
-        const uploadTask = uploadBytesResumable(storageRef, file);
-
-        const uploadPromise = new Promise<string>((resolve, reject) => {
-          uploadTask.on(
-            "state_changed",
-            (snapshot) => {
-              const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-              onProgress?.(progress);
-              console.log(`[ImageService] Upload ${path}: ${progress.toFixed(0)}%`);
-            },
-            (error) => {
-              console.error(`[ImageService] Erro no upload de ${path}:`, error);
-              reject(error);
-            },
-            async () => {
-              const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
-              resolve(downloadUrl);
-            }
-          );
-        });
-
+        console.log(`[ImageService] Tentativa ${i + 1} de ${retries + 1} para upload Cloudinary (${targetFolder})`);
+        
+        const uploadPromise = cloudinaryService.uploadFromDataUrl(dataUrl, targetFolder);
+        
         const timeoutPromise = new Promise<never>((_, reject) =>
           setTimeout(() => {
-            uploadTask.cancel(); // Tenta cancelar o upload ativo
             reject(new Error(`Upload timeout após ${timeoutMs / 1000}s`));
           }, timeoutMs)
         );
 
         return await Promise.race([uploadPromise, timeoutPromise]);
       } catch (err: any) {
-        console.error(`[ImageService] Falha na tentativa ${i + 1} de upload de ${path}:`, err);
+        console.error(`[ImageService] Falha na tentativa ${i + 1} de upload Cloudinary:`, err);
         if (i === retries) {
-          console.error(`[ImageService] Todas as tentativas de upload de ${path} falharam.`);
+          console.error(`[ImageService] Todas as tentativas de upload Cloudinary falharam.`);
           return null;
         }
         // Pequeno delay antes de tentar novamente
@@ -123,23 +102,14 @@ export const imageService = {
   },
 
   /**
-   * Faz upload de uma DataURL (base64) para o Firebase Storage.
+   * Faz upload de uma DataURL (base64) para o Cloudinary.
    */
   async uploadDataUrl(dataUrl: string, path: string): Promise<string> {
-    const storageRef = ref(storage, path);
-    const blob = await dataUrlToBlob(dataUrl);
+    let folder = "general";
+    if (path.includes("profile")) folder = "profiles";
+    else if (path.includes("evolution")) folder = "evolution";
+    else if (path.includes("onboarding")) folder = "onboarding";
     
-    const uploadTask = uploadBytesResumable(storageRef, blob);
-    return new Promise((resolve, reject) => {
-      uploadTask.on(
-        "state_changed",
-        null,
-        (error) => reject(error),
-        async () => {
-          const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
-          resolve(downloadUrl);
-        }
-      );
-    });
+    return cloudinaryService.uploadFromDataUrl(dataUrl, folder);
   }
 };

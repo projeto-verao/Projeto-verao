@@ -100,7 +100,7 @@ private decodeState(state: string): string {
 - Banco de Dados (DATABASE_URL)
 - Segurança (JWT_SECRET)
 - IA (GEMINI_API_KEY, OPENAI_API_KEY)
-- Storage (AWS_*)
+- Storage (Cloudinary VITE_CLOUDINARY_*)
 - Ambiente (NODE_ENV, PORT)
 
 **Impacto**: Novo desenvolvedor consegue configurar em 5 minutos.
@@ -118,10 +118,10 @@ private decodeState(state: string): string {
 
 ### Onboarding
 - ✅ Formulário completo com validação
-- ✅ Upload de foto de perfil
-- ✅ Upload de foto de avaliação física
+- ✅ Upload de foto de perfil (Cloudinary)
+- ✅ Upload de foto de avaliação física (Cloudinary)
 - ✅ Redimensionamento automático de imagens
-- ✅ Salvamento no banco de dados
+- ✅ Salvamento no banco de dados (URLs HTTPS)
 
 ### Geração de Treino
 - ✅ Análise visual com Gemini
@@ -252,7 +252,7 @@ private decodeState(state: string): string {
 | **Backend** | Express.js + tRPC 11 |
 | **Banco de Dados** | MySQL/TiDB + Drizzle ORM |
 | **IA** | Gemini 2.5 Flash |
-| **Storage** | AWS S3 |
+| **Storage** | Cloudinary |
 | **Autenticação** | Manus OAuth |
 | **Roteamento** | Wouter |
 | **UI Components** | Radix UI |

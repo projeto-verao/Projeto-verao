@@ -6,7 +6,7 @@ import { firestoreService } from "@/hooks/useFirebaseFirestore";
 import { Dumbbell, AlertCircle } from "lucide-react";
 
 /**
- * Converte uma URL de imagem do Firebase Storage para base64.
+ * Converte uma URL de imagem segura (Cloudinary) para base64.
  * Usado para enviar a foto de avaliação à IA (Gemini requer base64).
  */
 async function fetchImageAsBase64(url: string): Promise<string> {
@@ -44,14 +44,14 @@ export default function Processing() {
       // 1. Análise corporal opcional via foto de avaliação
       let bodyAnalysisSummary: string | undefined;
       
-      // Tentar obter a foto de avaliação do perfil (Firebase Storage)
+      // Tentar obter a foto de avaliação do perfil (Cloudinary)
       let evalPhotoBase64: string | undefined;
       const evalPhotoUrl = (profile as any)?.evalPhotoUrl;
       if (evalPhotoUrl) {
         try {
           evalPhotoBase64 = await fetchImageAsBase64(evalPhotoUrl);
         } catch (e) {
-          console.warn("Falha ao baixar foto de avaliação do Storage:", e);
+          console.warn("Falha ao baixar foto de avaliação:", e);
         }
       }
       

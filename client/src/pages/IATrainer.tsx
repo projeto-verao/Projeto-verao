@@ -226,7 +226,7 @@ export default function IATrainer() {
         return;
       }
 
-      // 4. Upload da imagem original para o Firebase Storage (com compressão leve)
+      // 4. Upload da imagem original para o Cloudinary (com compressão leve)
       const storagePath = `users/${user.uid}/evolution/${new Date().toISOString().replace(/:/g, '-')}.jpg`;
       const compressedForStorage = await imageService.resizeImage(file, 1200, 0.8);
       const photoUrl = await imageService.uploadImage(compressedForStorage, storagePath);
@@ -250,7 +250,7 @@ export default function IATrainer() {
         `**Dica:** ${analysis.tip}`
       ].filter(Boolean).join("\n\n");
 
-      // 7. Salva no Firestore com a URL do Storage
+      // 7. Salva no Firestore com a URL segura (Cloudinary)
       await firestoreService.addBodyProgress(user.uid, {
         photoUrl: photoUrl || undefined,
         bodyFatPercent: parseFloat(analysis.bfEstimate) || undefined,
