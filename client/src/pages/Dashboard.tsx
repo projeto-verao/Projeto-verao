@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import { isOnboardingComplete } from "@/hooks/useFirebaseAuth";
 import AppLayout from "@/components/AppLayout";
 import { geminiService } from "@/lib/gemini";
 import { firestoreService, dateHelpers, StoredWorkout, ExerciseLoadEntry, WorkoutCompletionEntry } from "@/hooks/useFirebaseFirestore";
@@ -193,7 +194,7 @@ export default function Dashboard() {
   // ── Gerar treino com IA ────────────────────────────────────────────────────
   const handleGenerateWorkout = async () => {
     if (!user) return;
-    if (!profile?.goal) {
+    if (!isOnboardingComplete(profile)) {
       toast.error("Complete seu perfil primeiro para gerar o treino.");
       navigate("/onboarding");
       return;

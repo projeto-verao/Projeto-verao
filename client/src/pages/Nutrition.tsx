@@ -28,7 +28,6 @@ export default function Nutrition() {
   const [activeTab, setActiveTab] = useState<Tab>("diario");
   const [mealDescription, setMealDescription] = useState("");
   const [mealType, setMealType] = useState(MEAL_TYPES[0]);
-  const [photoBase64, setPhotoBase64] = useState<string | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -75,7 +74,7 @@ export default function Nutrition() {
 
   const handleAnalyzeMeal = async () => {
     if (!user) return;
-    if (!mealDescription.trim() && !photoBase64) {
+    if (!mealDescription.trim() && !photoPreview) {
       toast.error("Descreva a refeição ou adicione uma foto.");
       return;
     }
@@ -95,7 +94,6 @@ export default function Nutrition() {
       });
       toast.success("Refeição analisada e registrada!");
       setMealDescription("");
-      setPhotoBase64(null);
       setPhotoPreview(null);
       await loadData();
     } catch (err) {
@@ -134,9 +132,7 @@ export default function Nutrition() {
   const handlePhotoSelect = (file: File) => {
     const reader = new FileReader();
     reader.onload = e => {
-      const result = e.target?.result as string;
-      setPhotoPreview(result);
-      setPhotoBase64(result.split(",")[1]);
+      setPhotoPreview(e.target?.result as string);
     };
     reader.readAsDataURL(file);
   };

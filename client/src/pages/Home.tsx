@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import { isOnboardingComplete } from "@/hooks/useFirebaseAuth";
 import { Dumbbell } from "lucide-react";
 
 export default function Home() {
@@ -18,7 +19,7 @@ export default function Home() {
     }
 
     // Se autenticado e onboarding completo, ir para dashboard
-    if (profile && (profile as any).onboardingCompleted) {
+    if (isOnboardingComplete(profile)) {
       navigate("/dashboard");
     } else {
       // Após login, se onboarding não completo, vai para Welcome

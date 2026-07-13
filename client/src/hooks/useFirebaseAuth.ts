@@ -36,6 +36,22 @@ export interface UserProfile {
 }
 
 /**
+ * Critério único de "onboarding completo" usado em todo o app.
+ *
+ * Regra: `onboardingCompleted === true` é o critério canônico. Para
+ * usuários cadastrados antes deste campo existir no Firestore (onde
+ * `onboardingCompleted` é `undefined`), consideramos o onboarding
+ * completo se já houver um `goal` salvo — isso preserva o acesso de
+ * contas já cadastradas sem exigir que refaçam o cadastro.
+ */
+export function isOnboardingComplete(profile: UserProfile | null | undefined): boolean {
+  if (!profile) return false;
+  if (profile.onboardingCompleted === true) return true;
+  if (profile.onboardingCompleted === undefined && !!profile.goal) return true;
+  return false;
+}
+
+/**
  * Sincronização opcional com backend próprio (apenas quando existir).
  * No Firebase Hosting não há backend; esta chamada falha silenciosamente
  * e não bloqueia o fluxo de autenticação.

@@ -54,11 +54,6 @@ export default function Processing() {
           console.warn("Falha ao baixar foto de avaliação:", e);
         }
       }
-      
-      // Fallback: sessionStorage (para compatibilidade com cadastros antigos)
-      if (!evalPhotoBase64) {
-        evalPhotoBase64 = sessionStorage.getItem("evalPhotoBase64") || undefined;
-      }
 
       if (evalPhotoBase64) {
         try {
@@ -89,9 +84,6 @@ export default function Processing() {
           ? "Primeiro treino gerado pela IA com avaliação física por foto"
           : "Primeiro treino gerado pela IA",
       });
-
-      // Limpar foto temporária (fallback para cadastros antigos)
-      sessionStorage.removeItem("evalPhotoBase64");
 
       setProgress(100);
       setTimeout(() => navigate("/dashboard"), 800);

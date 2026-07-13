@@ -3,6 +3,7 @@ import { Toaster } from "sonner";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { useAuth } from "@/contexts/AuthContext";
+import { isOnboardingComplete } from "@/hooks/useFirebaseAuth";
 import { useEffect } from "react";
 
 import Home from "@/pages/Home";
@@ -30,10 +31,10 @@ function AuthGuard({ children, requireOnboarding = true }: { children: React.Rea
     
     if (!isAuthenticated) {
       navigate("/login");
-    } else if (requireOnboarding && !profile?.onboardingCompleted) {
+    } else if (requireOnboarding && !isOnboardingComplete(profile)) {
       // Se está logado mas não terminou o cadastro, vai para onboarding
       navigate("/onboarding");
-    } else if (!requireOnboarding && profile?.onboardingCompleted) {
+    } else if (!requireOnboarding && isOnboardingComplete(profile)) {
       // Se já terminou o cadastro e tenta acessar onboarding/welcome, vai para dashboard
       navigate("/dashboard");
     }
