@@ -1,0 +1,1 @@
+- [Importing a standalone legacy repo](legacy-repo-import.md) — replacing the monorepo scaffold with an external GitHub project's exact structure needs care around .npmrc/.replit and firewall-blocked deps.
