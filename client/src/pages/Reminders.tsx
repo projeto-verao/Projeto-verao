@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import AppLayout from "@/components/AppLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { firestoreService, ReminderConfig } from "@/hooks/useFirebaseFirestore";
-import { messaging } from "@/lib/firebase";
+import { useRecurringReminders } from "@/hooks/useLocalNotifications";
 import { 
   Bell, 
   Droplets, 
@@ -18,10 +18,7 @@ import {
   Pill, 
   CheckCircle2,
   ChevronRight,
-  Clock,
   Sparkles,
-  Zap,
-  TestTube,
   BellOff,
   BellRing
 } from "lucide-react";
@@ -41,116 +38,6 @@ const REMINDER_TYPES = [
   { id: "supplements", title: "Suplementos", description: "Não esqueça de tomar sua suplementação", icon: Pill, color: "text-cyan-500", repetitionType: 'every_x_hours', time: '09:00', intervalHours: 4, daysOfWeek: [1, 2, 3, 4, 5], sound: true, vibration: true, repeatUntilDone: false },
   { id: "training_log", title: "Registrar treino", description: "Anote as cargas e repetições", icon: CheckCircle2, color: "text-emerald-600", repetitionType: 'training_days', time: '19:00', intervalHours: 2, daysOfWeek: [1, 3, 5], sound: true, vibration: true, repeatUntilDone: false },
 ];
-
-function useFcmStatus() {
-  const [fcmToken, setFcmToken] = useState<string | null>(null);
-  const [isSupported, setIsSupported] = useState(false);
-
-  useEffect(() => {
-    const checkFcm = async () => {
-      if (!messaging) {
-        setIsSupported(false);
-        return;
-      }
-      try {
-        const supported = 'serviceWorker' in navigator && 'PushManager' in window;
-        setIsSupported(supported);
-        if (supported) {
-          const token = localStorage.getItem("fcm_token");
-          setFcmToken(token);
-        }
-      } catch (e) {
-        console.warn("[FCM] Verificação falhou:", e);
-        setIsSupported(false);
-      }
-    };
-    checkFcm();
-  }, []);
-
-  return { fcmToken, isSupported };
-}
-
-function TestNotificationButton() {
-  const { fcmToken, isSupported } = useFcmStatus();
-  const [testing, setTesting] = useState(false);
-
-  const handleTest = useCallback(async () => {
-    setTesting(true);
-    if ('Notification' in window) {
-      const currentPermission = Notification.permission as string;
-      if (currentPermission === 'denied') {
-        toast.error("Permissão de notificação negada. Ative nas configurações do navegador.");
-        setTesting(false);
-        return;
-      }
-      if (currentPermission === 'default') {
-        const newPermission = await Notification.requestPermission();
-        if ((newPermission as string) !== 'granted') {
-          toast.error("Permissão de notificação negada.");
-          setTesting(false);
-          return;
-        }
-      }
-    }
-
-    const token = fcmToken || localStorage.getItem("fcm_token");
-
-    if (token && isSupported) {
-      try {
-        const response = await fetch("/api/fcm/send", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            fcmToken: token,
-            title: "Teste de Notificação",
-            body: "Se você está vendo isso, os lembretes estão funcionando via FCM!",
-          }),
-        });
-        if (response.ok) {
-          toast.success("Notificação FCM enviada! Verifique em 5-10 segundos.");
-        } else {
-          throw new Error(`HTTP ${response.status}`);
-        }
-      } catch (e) {
-        console.log("[Reminders] FCM endpoint não disponível, usando fallback local");
-        try {
-          const sw = await navigator.serviceWorker.ready;
-          sw.active?.postMessage({
-            type: "SCHEDULE_NOTIFICATION",
-            reminderId: `test_${Date.now()}`,
-            title: "Teste de Notificação",
-            body: "Se você está vendo isso, os lembretes estão funcionando (fallback local)!",
-            delayMs: 5000
-          });
-          toast.success("Notificação agendada para daqui a 5 segundos (fallback local)!");
-        } catch (e2) {
-          toast.error("Erro ao agendar notificação de teste.");
-        }
-      }
-    } else if ('Notification' in window && Notification.permission === 'granted') {
-      new Notification("Teste de Notificação", {
-        body: "Se você está vendo isso, as notificações estão funcionando!",
-        icon: "/icons/icon-192x192.png",
-      });
-      toast.success("Notificação direta enviada!");
-    } else {
-      toast.error("Permissão de notificação negada.");
-    }
-    setTesting(false);
-  }, [fcmToken, isSupported]);
-
-  return (
-    <button
-      onClick={handleTest}
-      disabled={testing}
-      className="fixed bottom-24 left-6 right-6 bg-gradient-to-r from-purple-600 to-pink-600 text-white py-4 rounded-2xl font-bold shadow-xl flex items-center justify-center gap-3 hover:from-purple-700 hover:to-pink-700 transition-all disabled:opacity-50"
-    >
-      <TestTube size={20} />
-      {testing ? "ENVIANDO..." : "TESTAR LEMBRETE (5s)"}
-    </button>
-  );
-}
 
 function NotificationPermissionBanner() {
   const [permission, setPermission] = useState<NotificationPermission | 'checking'>('checking');
@@ -206,6 +93,8 @@ export default function Reminders() {
   const [loading, setLoading] = useState(true);
   const [selectedProfile, setSelectedProfile] = useState<'basic' | 'fitness'>('basic');
   const initialLoadDone = useRef(false);
+  const hasScheduledOnOpen = useRef(false);
+  const { scheduleNextReminder, rescheduleOnAppOpen } = useRecurringReminders();
 
   const basicRemindersIds = ['water', 'food_log', 'training_remind'];
   const fitnessRemindersIds = ['water', 'food_log', 'protein', 'calories', 'training_remind', 'weight', 'evolution_photo'];
@@ -248,10 +137,40 @@ export default function Reminders() {
     return () => unsubscribe();
   }, [user]);
 
+  // Reagendar todos os lembretes ativos ao abrir o app
+  useEffect(() => {
+    if (reminders.length > 0 && !hasScheduledOnOpen.current && 'serviceWorker' in navigator) {
+      hasScheduledOnOpen.current = true;
+      rescheduleOnAppOpen(reminders).then(count => {
+        if (count > 0) {
+          console.log(`[Reminders] ${count} lembrete(s) reagendado(s) ao abrir o app`);
+        }
+      }).catch(err => {
+        console.warn('[Reminders] Erro ao reagendar lembretes:', err);
+      });
+    }
+  }, [reminders, rescheduleOnAppOpen]);
+
   const handleToggle = async (id: string, enabled: boolean) => {
     if (!user) return;
     try {
+      // Solicitar permissão se necessário ao ativar um lembrete
+      if (enabled && 'Notification' in window && Notification.permission === 'default') {
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+          toast.error("Permissão de notificação negada. Ative nas configurações do navegador.");
+          return;
+        }
+      }
+
       await firestoreService.updateReminder(user.uid, id, { enabled });
+
+      // Agendar ou cancelar a notificação correspondente
+      const reminder = reminders.find(r => r.id === id);
+      if (reminder && 'serviceWorker' in navigator) {
+        await scheduleNextReminder({ ...reminder, enabled });
+      }
+
       toast.success(enabled ? "Lembrete ativado!" : "Lembrete desativado!");
     } catch (err) {
       toast.error("Erro ao atualizar lembrete.");
@@ -260,7 +179,7 @@ export default function Reminders() {
 
   return (
     <AppLayout>
-      <div className="max-w-2xl mx-auto p-4 pb-40">
+      <div className="max-w-2xl mx-auto p-4 pb-24">
         <div className="flex items-center gap-3 mb-8">
           <div className="bg-primary/10 p-3 rounded-2xl">
             <Bell className="text-primary" size={24} />
@@ -336,7 +255,6 @@ export default function Reminders() {
           </button>
         </div>
       </div>
-      <TestNotificationButton />
     </AppLayout>
   );
 }
