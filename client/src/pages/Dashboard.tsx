@@ -68,17 +68,15 @@ export default function Dashboard() {
   const [showHomeConfirm, setShowHomeConfirm] = useState(false);
   const [pendingHomeDayNumber, setPendingHomeDayNumber] = useState<number | null>(null);
 
-  // Efeito para resetar o scroll ao selecionar um dia de treino
+  // Efeito para rolar até o dia selecionado ao expandir
   useEffect(() => {
     if (selectedDay !== null) {
-      // O container real de scroll da aplicação é o .app-content definido no AppLayout/index.css
-      const scrollContainer = document.querySelector('.app-content');
-      if (scrollContainer) {
-        // Usando instatâneo (behavior: 'auto') para garantir que o usuário veja o topo imediatamente
-        // e resetando explicitamente o scrollTop para garantir compatibilidade
-        scrollContainer.scrollTop = 0;
-        scrollContainer.scrollTo({ top: 0, behavior: 'auto' });
-      }
+      setTimeout(() => {
+        const el = document.getElementById(`workout-day-${selectedDay}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 50);
     }
   }, [selectedDay]);
 
@@ -618,17 +616,10 @@ export default function Dashboard() {
     return () => { if (timerIntervalRef.current) clearInterval(timerIntervalRef.current); };
   }, [restTimer]);
 
-  // ── Scroll automático para o topo ao selecionar um dia ────────────────────
+  // ── Selecionar/colapsar dia de treino ──────────────────────────────────────
   const handleSelectDay = (dayNumber: number) => {
     const newSelectedDay = selectedDay === dayNumber ? null : dayNumber;
     setSelectedDay(newSelectedDay);
-    
-    // Se um novo dia foi selecionado, fazer scroll para o topo
-    if (newSelectedDay !== null) {
-      setTimeout(() => {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      }, 0);
-    }
   };
 
   const toggleSet = (dayNumber: number, exerciseIdx: number, setIdx: number, restTime: string) => {
@@ -1004,7 +995,7 @@ export default function Dashboard() {
             </div>
 
             {days.map((day) => (
-              <div key={day.dayNumber} className={`bg-white border transition-all duration-300 rounded-[32px] p-5 shadow-sm ${selectedDay === day.dayNumber ? "border-black ring-1 ring-black" : "border-gray-100"}`}>
+              <div id={`workout-day-${day.dayNumber}`} key={day.dayNumber} className={`bg-white border transition-all duration-300 rounded-[32px] p-5 shadow-sm ${selectedDay === day.dayNumber ? "border-black ring-1 ring-black" : "border-gray-100"}`}>
                 <div
                   className="flex items-center justify-between cursor-pointer"
                   onClick={() => handleSelectDay(day.dayNumber)}
@@ -1043,7 +1034,7 @@ export default function Dashboard() {
                         className="w-full bg-blue-50 text-blue-600 border border-blue-100 py-3.5 rounded-3xl font-bold active:scale-95 transition-all flex items-center justify-center gap-2 text-sm"
                       >
                         <Home size={16} />
-                        Não vou à academia? Fazer treino em casa
+                        Treino em casa
                       </button>
                       {!isTraining && (
                         <div className="flex items-center justify-center gap-2 text-gray-400 py-1">
