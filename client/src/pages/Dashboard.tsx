@@ -1026,9 +1026,9 @@ export default function Dashboard() {
                 {selectedDay === day.dayNumber && (
                   <div className="mt-8 space-y-5 animate-in fade-in slide-in-from-top-4 duration-500">
                     
-                    {/* Botão de Iniciar Treino (Cronômetro) */}
-                    {!isTraining && (
-                      <div className="space-y-3 mb-6">
+                    {/* Botão de Iniciar Treino (Cronômetro) + Treino em casa */}
+                    <div className="space-y-3 mb-6">
+                      {!isTraining && (
                         <button
                           onClick={() => handleStartWorkout(day.dayNumber)}
                           className="w-full bg-black text-white py-4 rounded-3xl font-bold shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
@@ -1036,20 +1036,22 @@ export default function Dashboard() {
                           <Play size={18} fill="white" />
                           INICIAR TREINO AGORA
                         </button>
-                        {/* Opção de treino em casa */}
-                        <button
-                          onClick={() => { setPendingHomeDayNumber(day.dayNumber); setShowHomeConfirm(true); }}
-                          className="w-full bg-blue-50 text-blue-600 border border-blue-100 py-3.5 rounded-3xl font-bold active:scale-95 transition-all flex items-center justify-center gap-2 text-sm"
-                        >
-                          <Home size={16} />
-                          Não vou à academia? Fazer treino em casa
-                        </button>
+                      )}
+                      {/* Opção de treino em casa — visível sempre que o dia estiver aberto */}
+                      <button
+                        onClick={() => { setPendingHomeDayNumber(day.dayNumber); setShowHomeConfirm(true); }}
+                        className="w-full bg-blue-50 text-blue-600 border border-blue-100 py-3.5 rounded-3xl font-bold active:scale-95 transition-all flex items-center justify-center gap-2 text-sm"
+                      >
+                        <Home size={16} />
+                        Não vou à academia? Fazer treino em casa
+                      </button>
+                      {!isTraining && (
                         <div className="flex items-center justify-center gap-2 text-gray-400 py-1">
                           <Info size={14} />
                           <p className="text-xs font-bold uppercase tracking-widest">Inicie o treino para registrar sua execução.</p>
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
 
                     {/* Cronômetro Ativo na tela do treino */}
                     {isTraining && (
