@@ -6,7 +6,7 @@ import AppLayout from "@/components/AppLayout";
 import { geminiService } from "@/lib/gemini";
 import { firestoreService, dateHelpers, StoredWorkout, ExerciseLoadEntry, WorkoutCompletionEntry } from "@/hooks/useFirebaseFirestore";
 import {
-  Utensils, Target, RefreshCw, Loader2, ChevronRight, Timer, X, Sparkles, Activity, Trash2, CheckCircle2, Play, Trophy, Info, Weight, AlertTriangle, TrendingDown, Award, AlertCircle
+  Utensils, Target, RefreshCw, Loader2, ChevronRight, Timer, X, Sparkles, Activity, Trash2, CheckCircle2, Play, Trophy, Info, Weight, AlertTriangle, TrendingDown, Award, AlertCircle, Home
 } from "lucide-react";
 import { toast } from "sonner";
 import { Timestamp, collection, getDocs, query, orderBy, limit } from "firebase/firestore";
@@ -63,6 +63,11 @@ export default function Dashboard() {
   // ── Estado do Modal de Vídeo ──────────────────────────────────────────────
   const [selectedVideoExercise, setSelectedVideoExercise] = useState<string | null>(null);
 
+  // ── Estado do Treino em Casa ───────────────────────────────────────────────
+  const [homeWorkoutDays, setHomeWorkoutDays] = useState<Record<number, import("@/hooks/useFirebaseFirestore").StoredExercise[]>>({});
+  const [showHomeConfirm, setShowHomeConfirm] = useState(false);
+  const [pendingHomeDayNumber, setPendingHomeDayNumber] = useState<number | null>(null);
+
   // Efeito para resetar o scroll ao selecionar um dia de treino
   useEffect(() => {
     if (selectedDay !== null) {
@@ -76,6 +81,118 @@ export default function Dashboard() {
       }
     }
   }, [selectedDay]);
+
+  // ── Biblioteca de exercícios em casa por grupo muscular ────────────────────
+  const HOME_EXERCISES_BY_GROUP: Record<string, import("@/hooks/useFirebaseFirestore").StoredExercise[]> = {
+    chest: [
+      { name: "Flexão de braço", sets: 4, reps: "12-15", weight: "Corporal", rest: "60", notes: "Mãos na largura dos ombros, desça o peito até quase tocar o chão" },
+      { name: "Flexão inclinada", sets: 3, reps: "10-12", weight: "Corporal", rest: "60", notes: "Mãos em superfície elevada (banco/sofá), foco no peitoral inferior" },
+      { name: "Flexão declinada", sets: 3, reps: "10-12", weight: "Corporal", rest: "60", notes: "Pés elevados no banco/sofá, foco no peitoral superior" },
+      { name: "Tríceps no banco", sets: 3, reps: "12-15", weight: "Corporal", rest: "60", notes: "Mãos na borda do banco atrás do corpo, desça dobrando os cotovelos" },
+    ],
+    back: [
+      { name: "Remada na mesa", sets: 4, reps: "12-15", weight: "Corporal", rest: "60", notes: "Deitado sob mesa resistente, puxe o peito até a borda" },
+      { name: "Superman", sets: 3, reps: "15-20", weight: "Corporal", rest: "45", notes: "Deitado de bruços, eleve braços e pernas simultaneamente, segure 2s" },
+      { name: "Remada com mochila", sets: 3, reps: "12-15", weight: "Corporal", rest: "60", notes: "Incline o tronco 45°, puxe a mochila com peso para o abdômen" },
+      { name: "Good morning", sets: 3, reps: "15", weight: "Corporal", rest: "45", notes: "Em pé, joelhos semi-flexionados, incline o tronco mantendo costas retas" },
+    ],
+    shoulders: [
+      { name: "Pike push-up", sets: 4, reps: "10-12", weight: "Corporal", rest: "60", notes: "Corpo em V invertido, desça a cabeça em direção ao chão" },
+      { name: "Elevação lateral com garrafas", sets: 3, reps: "15-20", weight: "Corporal", rest: "45", notes: "Use garrafas d'água como halteres, eleve os braços até a altura dos ombros" },
+      { name: "Flexão de pique (handstand parcial)", sets: 3, reps: "8-10", weight: "Corporal", rest: "60", notes: "Pés apoiados na parede, corpo quase vertical, flexione os cotovelos" },
+    ],
+    biceps: [
+      { name: "Chin-up (pegada supinada)", sets: 3, reps: "6-10", weight: "Corporal", rest: "60", notes: "Palmas voltadas para você, puxe até o queixo passar a barra" },
+      { name: "Rosca com toalha na porta", sets: 3, reps: "12-15", weight: "Corporal", rest: "45", notes: "Amarre toalha na maçaneta, recline o corpo e faça o movimento de rosca" },
+      { name: "Rosca com mochila", sets: 3, reps: "12-15", weight: "Corporal", rest: "45", notes: "Segure mochila com peso com uma mão, faça o movimento de rosca" },
+    ],
+    triceps: [
+      { name: "Tríceps no banco/cadeira", sets: 4, reps: "12-15", weight: "Corporal", rest: "60", notes: "Mãos na borda atrás do corpo, desça dobrando os cotovelos a 90°" },
+      { name: "Flexão com pegada fechada (diamante)", sets: 3, reps: "10-12", weight: "Corporal", rest: "60", notes: "Polegares e indicadores se tocam formando um diamante" },
+      { name: "Extensão de tríceps com mochila", sets: 3, reps: "12-15", weight: "Corporal", rest: "45", notes: "Segure mochila atrás da cabeça com ambas as mãos, estenda os braços" },
+    ],
+    legs: [
+      { name: "Agachamento livre", sets: 4, reps: "15-20", weight: "Corporal", rest: "60", notes: "Desça até a coxa ficar paralela ao solo, joelhos alinhados com os pés" },
+      { name: "Afundo (lunges)", sets: 3, reps: "12 cada perna", weight: "Corporal", rest: "60", notes: "Avance um passo largo, desça o joelho traseiro quase ao chão" },
+      { name: "Agachamento búlgaro", sets: 3, reps: "10-12 cada", weight: "Corporal", rest: "60", notes: "Pé traseiro elevado no banco/sofá, desça o joelho da frente a 90°" },
+      { name: "Agachamento sumô", sets: 3, reps: "15-20", weight: "Corporal", rest: "60", notes: "Pés bem afastados, pontas voltadas para fora, desça devagar" },
+    ],
+    hamstrings: [
+      { name: "Elevação pélvica (hip thrust)", sets: 4, reps: "15-20", weight: "Corporal", rest: "45", notes: "Deitado, pés no chão, eleve o quadril e contraia os glúteos no topo" },
+      { name: "Stiff peso corporal", sets: 3, reps: "15", weight: "Corporal", rest: "45", notes: "Em pé, incline o tronco com pernas semi-estendidas, sinta a tensão na parte posterior" },
+      { name: "Cadeira nórdica assistida", sets: 3, reps: "8-10", weight: "Corporal", rest: "60", notes: "Joelhos no chão com pés fixos, desça controlando com as mãos para se apoiar" },
+    ],
+    glutes: [
+      { name: "Elevação pélvica (hip thrust)", sets: 4, reps: "20", weight: "Corporal", rest: "45", notes: "Deitado, pés no chão, eleve o quadril e contraia os glúteos no topo por 1s" },
+      { name: "Afundo lateral", sets: 3, reps: "12 cada lado", weight: "Corporal", rest: "60", notes: "Dê um passo lateral amplo, dobre o joelho lateral, mantenha o outro esticado" },
+      { name: "Extensão de quadril de 4 apoios", sets: 3, reps: "15 cada", weight: "Corporal", rest: "45", notes: "De joelhos e mãos, eleve a perna para trás e para cima, contraia no topo" },
+      { name: "Agachamento sumô com pulso", sets: 3, reps: "20", weight: "Corporal", rest: "45", notes: "No ponto mais baixo do agachamento sumô, faça pequenos pulsos de 5 cm" },
+    ],
+    calves: [
+      { name: "Elevação de panturrilha em pé", sets: 4, reps: "20-25", weight: "Corporal", rest: "30", notes: "Em pé, suba lentamente na ponta dos pés e desça controlando" },
+      { name: "Elevação de panturrilha unilateral", sets: 3, reps: "15-20 cada", weight: "Corporal", rest: "30", notes: "Em um pé só, apoie-se levemente na parede para equilíbrio" },
+    ],
+    abs: [
+      { name: "Prancha abdominal", sets: 3, reps: "30-45 seg", weight: "Corporal", rest: "30", notes: "Corpo reto como tábua, não deixe o quadril afundar" },
+      { name: "Crunch abdominal", sets: 3, reps: "20-25", weight: "Corporal", rest: "30", notes: "Deitado, eleve apenas os ombros do chão, não puxe pelo pescoço" },
+      { name: "Elevação de pernas", sets: 3, reps: "15-20", weight: "Corporal", rest: "30", notes: "Deitado, eleve as pernas esticadas até 90° e desça controlando" },
+      { name: "Mountain climber", sets: 3, reps: "20 cada lado", weight: "Corporal", rest: "30", notes: "Em posição de prancha, alterne as pernas em ritmo controlado" },
+    ],
+  };
+
+  // ── Gerar exercícios em casa baseado no grupo muscular do treino ────────────
+  const generateHomeWorkout = (day: import("@/hooks/useFirebaseFirestore").StoredWorkoutDay): import("@/hooks/useFirebaseFirestore").StoredExercise[] => {
+    const allText = [day.title, ...day.exercises.map(e => e.name)].join(' ').toLowerCase();
+    const result: import("@/hooks/useFirebaseFirestore").StoredExercise[] = [];
+
+    if (/peit|supino|chest|fly|crucif|cross|bench/.test(allText)) result.push(...HOME_EXERCISES_BY_GROUP.chest);
+    if (/cost|remad|puxad|barra fixa|costas|back|pull|lat/.test(allText)) result.push(...HOME_EXERCISES_BY_GROUP.back);
+    if (/ombro|delt|develop|lateral|frontal|press ombro/.test(allText)) result.push(...HOME_EXERCISES_BY_GROUP.shoulders);
+    if (/bícep|bicep|rosca|curl/.test(allText)) result.push(...HOME_EXERCISES_BY_GROUP.biceps);
+    if (/trícep|tricep|franc|coice|pushdown|corda/.test(allText)) result.push(...HOME_EXERCISES_BY_GROUP.triceps);
+    if (/perna|leg|agach|quadrícep|hack|extens|lunge|afundo/.test(allText)) result.push(...HOME_EXERCISES_BY_GROUP.legs);
+    if (/posterior|isquio|stiff|terra|femoral|hamstring/.test(allText)) result.push(...HOME_EXERCISES_BY_GROUP.hamstrings);
+    if (/glút|gluteo|hip thrust|bulgari/.test(allText)) result.push(...HOME_EXERCISES_BY_GROUP.glutes);
+    if (/panturr|gêmeo|soleo|calf/.test(allText)) result.push(...HOME_EXERCISES_BY_GROUP.calves);
+    if (/abdôm|abdomi|prancha|obliq|crunch|core|abdo/.test(allText)) result.push(...HOME_EXERCISES_BY_GROUP.abs);
+
+    // Fallback: treino full body se nenhum grupo for identificado
+    if (result.length === 0) {
+      result.push(
+        ...HOME_EXERCISES_BY_GROUP.chest.slice(0, 2),
+        ...HOME_EXERCISES_BY_GROUP.legs.slice(0, 2),
+        ...HOME_EXERCISES_BY_GROUP.back.slice(0, 1),
+        ...HOME_EXERCISES_BY_GROUP.abs.slice(0, 2),
+      );
+    }
+
+    return result;
+  };
+
+  // ── Helper: retorna exercícios efetivos (casa ou academia) ─────────────────
+  const getEffectiveExercises = (dayNumber: number, originalExercises: import("@/hooks/useFirebaseFirestore").StoredExercise[]) => {
+    return homeWorkoutDays[dayNumber] ?? originalExercises;
+  };
+
+  // ── Confirmar troca para treino em casa ────────────────────────────────────
+  const handleConfirmHomeWorkout = () => {
+    if (pendingHomeDayNumber === null || !activeWorkout) return;
+    const day = activeWorkout.days.find(d => d.dayNumber === pendingHomeDayNumber);
+    if (!day) return;
+    const homeExercises = generateHomeWorkout(day);
+    setHomeWorkoutDays(prev => ({ ...prev, [pendingHomeDayNumber]: homeExercises }));
+    // Limpar séries completadas do dia atual (exercícios novos, índices reiniciam)
+    setCompletedSets(prev => {
+      const updated = { ...prev };
+      Object.keys(updated).forEach(key => {
+        if (key.startsWith(`${pendingHomeDayNumber}-`)) delete updated[key];
+      });
+      return updated;
+    });
+    setShowHomeConfirm(false);
+    setPendingHomeDayNumber(null);
+    toast.success("Treino em casa carregado! Os exercícios foram adaptados para peso corporal.");
+  };
 
   const target = profile?.daysPerWeek || 4;
 
@@ -272,7 +389,7 @@ export default function Dashboard() {
     const pendingExercises: string[] = [];
     const muscleStimulation: Record<string, { total: number; done: number }> = {};
 
-    day.exercises.forEach((ex, idx) => {
+    getEffectiveExercises(dayNumber, day.exercises).forEach((ex, idx) => {
       totalSets += ex.sets;
       let exerciseDone = false;
       for (let sIdx = 0; sIdx < ex.sets; sIdx++) {
@@ -381,7 +498,7 @@ export default function Dashboard() {
         nextTiming: "Treino pendente",
         percentCompleted: 0,
         completedExercisesList: [],
-        pendingExercisesList: day.exercises.map(ex => ex.name),
+        pendingExercisesList: getEffectiveExercises(dayNumber, day.exercises).map(ex => ex.name),
         lessStimulatedMuscles: [],
         messageTier: "none"
       });
@@ -390,7 +507,7 @@ export default function Dashboard() {
     }
 
     // Coletar cargas dos exercícios deste dia
-    const loads: ExerciseLoadEntry[] = day.exercises.map(ex => ({
+    const loads: ExerciseLoadEntry[] = getEffectiveExercises(dayNumber, day.exercises).map(ex => ({
       exerciseName: ex.name,
       loadKg: parseFloat(exerciseLoads[ex.name.toLowerCase()] || "0")
     })).filter(l => l.loadKg > 0);
@@ -746,6 +863,38 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Home Workout Confirmation Modal */}
+      {showHomeConfirm && pendingHomeDayNumber !== null && (
+        <div className="fixed inset-0 z-[120] bg-black/80 flex items-center justify-center p-6 backdrop-blur-sm">
+          <div className="bg-white rounded-[40px] p-8 w-full max-w-sm text-center animate-in zoom-in-95 duration-300">
+            <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Home size={32} className="text-blue-500" />
+            </div>
+            <h3 className="font-black text-gray-900 text-xl mb-2">TREINO EM CASA</h3>
+            <p className="text-gray-500 text-sm mb-2 leading-relaxed">
+              Os exercícios serão substituídos por versões com <span className="font-bold text-blue-600">peso corporal</span>, adaptadas para o mesmo grupo muscular do treino original.
+            </p>
+            <p className="text-gray-400 text-xs mb-8 leading-relaxed">
+              O treino conta normalmente para o seu progresso e histórico semanal.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowHomeConfirm(false); setPendingHomeDayNumber(null); }}
+                className="flex-1 bg-gray-100 text-gray-500 py-4 rounded-2xl font-bold active:scale-95 transition-all"
+              >
+                CANCELAR
+              </button>
+              <button
+                onClick={handleConfirmHomeWorkout}
+                className="flex-1 bg-blue-500 text-white py-4 rounded-2xl font-bold shadow-lg shadow-blue-200 active:scale-95 transition-all"
+              >
+                CONFIRMAR
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="p-4 pb-24">
         {/* Header Section */}
         <div className="flex items-center justify-between mb-8 px-2">
@@ -879,7 +1028,7 @@ export default function Dashboard() {
                     
                     {/* Botão de Iniciar Treino (Cronômetro) */}
                     {!isTraining && (
-                      <div className="space-y-4 mb-6">
+                      <div className="space-y-3 mb-6">
                         <button
                           onClick={() => handleStartWorkout(day.dayNumber)}
                           className="w-full bg-black text-white py-4 rounded-3xl font-bold shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
@@ -887,7 +1036,15 @@ export default function Dashboard() {
                           <Play size={18} fill="white" />
                           INICIAR TREINO AGORA
                         </button>
-                        <div className="flex items-center justify-center gap-2 text-gray-400 py-2">
+                        {/* Opção de treino em casa */}
+                        <button
+                          onClick={() => { setPendingHomeDayNumber(day.dayNumber); setShowHomeConfirm(true); }}
+                          className="w-full bg-blue-50 text-blue-600 border border-blue-100 py-3.5 rounded-3xl font-bold active:scale-95 transition-all flex items-center justify-center gap-2 text-sm"
+                        >
+                          <Home size={16} />
+                          Não vou à academia? Fazer treino em casa
+                        </button>
+                        <div className="flex items-center justify-center gap-2 text-gray-400 py-1">
                           <Info size={14} />
                           <p className="text-xs font-bold uppercase tracking-widest">Inicie o treino para registrar sua execução.</p>
                         </div>
@@ -911,7 +1068,7 @@ export default function Dashboard() {
                       </div>
                     )}
 
-                    {day.exercises.map((ex, idx) => (
+                    {getEffectiveExercises(day.dayNumber, day.exercises).map((ex, idx) => (
                       <div key={idx} className="bg-gray-50 rounded-3xl p-5 border border-gray-100">
                         <div className="flex justify-between items-start mb-4">
                           <div className="flex-1">
