@@ -63,11 +63,32 @@ async function callGemini(
 
     if (!res.ok) {
       const errText = await res.text();
-      console.error("[Gemini] Erro HTTP", res.status, errText);
+      // Tenta extrair a mensagem detalhada retornada pela API do Gemini
+      // (em vez de expor apenas o status HTTP genérico).
+      let apiMessage: string | undefined;
+      try {
+        const errJson = JSON.parse(errText);
+        apiMessage = errJson?.error?.message;
+      } catch {
+        // corpo não era JSON, mantém errText bruto no log
+      }
+      console.error(
+        `[Gemini] Erro HTTP ${res.status}${apiMessage ? ` — ${apiMessage}` : ""}`,
+        errText
+      );
       if (res.status === 429) {
         throw new Error("Limite de uso da IA atingido. Aguarde alguns minutos e tente novamente.");
       }
-      throw new Error(`Erro na IA (HTTP ${res.status}). Tente novamente.`);
+      if (res.status === 400 && apiMessage?.toLowerCase().includes("api key")) {
+        throw new Error(
+          "A chave da API Gemini configurada é inválida. Verifique a variável VITE_GEMINI_API_KEY."
+        );
+      }
+      throw new Error(
+        apiMessage
+          ? `Erro na IA (HTTP ${res.status}): ${apiMessage}`
+          : `Erro na IA (HTTP ${res.status}). Tente novamente.`
+      );
     }
 
     const data = await res.json();
