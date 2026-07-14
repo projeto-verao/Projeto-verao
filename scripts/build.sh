@@ -1,10 +1,17 @@
 #!/bin/bash
-# Load .env.production into environment variables
+# Load .env.production into environment variables, WITHOUT overriding
+# variables that are already set in the environment (e.g. Replit Secrets
+# like VITE_YOUTUBE_API_KEY). This ensures real secrets always take
+# precedence over placeholder values committed in .env.production.
 if [ -f .env.production ]; then
-  set -a
-  source .env.production
-  set +a
-  echo "Loaded VITE_GEMINI_API_KEY from .env.production"
+  while IFS='=' read -r key value; do
+    # Skip blank lines and comments
+    [[ -z "$key" || "$key" == \#* ]] && continue
+    if [ -z "${!key}" ]; then
+      export "$key=$value"
+    fi
+  done < .env.production
+  echo "Loaded .env.production (existing env vars / secrets take precedence)"
 else
   echo "ERROR: .env.production not found!" >&2
   exit 1
