@@ -18,6 +18,11 @@ import {
   Pill, 
   CheckCircle2,
   ChevronRight,
+  ChevronLeft,
+  Clock,
+  Calendar,
+  Volume2,
+  Vibrate,
   Sparkles,
   BellOff,
   BellRing
@@ -38,6 +43,18 @@ const REMINDER_TYPES = [
   { id: "supplements", title: "Suplementos", description: "Não esqueça de tomar sua suplementação", icon: Pill, color: "text-cyan-500", repetitionType: 'every_x_hours', time: '09:00', intervalHours: 4, daysOfWeek: [1, 2, 3, 4, 5], sound: true, vibration: true, repeatUntilDone: false },
   { id: "training_log", title: "Registrar treino", description: "Anote as cargas e repetições", icon: CheckCircle2, color: "text-emerald-600", repetitionType: 'training_days', time: '19:00', intervalHours: 2, daysOfWeek: [1, 3, 5], sound: true, vibration: true, repeatUntilDone: false },
 ];
+
+const REPETITION_OPTIONS = [
+  { value: 'once_a_day', label: 'Uma vez por dia' },
+  { value: 'every_x_hours', label: 'A cada X horas' },
+  { value: 'specific_days', label: 'Dias específicos' },
+  { value: 'training_days', label: 'Apenas em dias de treino' },
+  { value: 'workdays', label: 'Apenas dias úteis' },
+  { value: 'daily', label: 'Todos os dias' },
+];
+
+const HOUR_OPTIONS = [1, 2, 3, 4, 6, 8, 12];
+const DAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
 function NotificationPermissionBanner() {
   const [permission, setPermission] = useState<NotificationPermission | 'checking'>('checking');
@@ -91,6 +108,8 @@ export default function Reminders() {
   const { user } = useAuth();
   const [reminders, setReminders] = useState<ReminderConfig[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedReminder, setSelectedReminder] = useState<ReminderConfig | null>(null);
+  const [isConfiguring, setIsConfiguring] = useState(false);
   const [selectedProfile, setSelectedProfile] = useState<'basic' | 'fitness'>('basic');
   const initialLoadDone = useRef(false);
   const hasScheduledOnOpen = useRef(false);
@@ -177,6 +196,167 @@ export default function Reminders() {
     }
   };
 
+  const handleSave = async () => {
+    if (!user || !selectedReminder) return;
+    try {
+      await firestoreService.updateReminderConfig(user.uid, selectedReminder);
+      if (selectedReminder.enabled && 'serviceWorker' in navigator) {
+        await scheduleNextReminder(selectedReminder);
+      }
+      setIsConfiguring(false);
+      setSelectedReminder(null);
+      toast.success("Configuração salva!");
+    } catch (err) {
+      toast.error("Erro ao salvar configuração.");
+    }
+  };
+
+  if (isConfiguring && selectedReminder) {
+    const ConfigIcon = REMINDER_TYPES.find(t => t.id === selectedReminder.id)?.icon || Bell;
+    return (
+      <AppLayout>
+        <div className="p-4 pb-24">
+          <button
+            onClick={() => { setIsConfiguring(false); setSelectedReminder(null); }}
+            className="flex items-center gap-2 text-gray-600 mb-6 hover:text-black transition-colors"
+          >
+            <ChevronLeft size={20} />
+            <span className="font-medium">Voltar</span>
+          </button>
+
+          <div className="flex items-center gap-4 mb-8">
+            <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center text-gray-700">
+              <ConfigIcon size={24} />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold">{selectedReminder.title}</h2>
+              <p className="text-sm text-gray-500">{selectedReminder.description}</p>
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            <div className="space-y-3">
+              <label className="text-sm font-bold flex items-center gap-2 px-1">
+                <Calendar size={16} /> Tipo de Repetição
+              </label>
+              <select
+                value={selectedReminder.repetitionType}
+                onChange={(e) => setSelectedReminder({ ...selectedReminder, repetitionType: e.target.value as ReminderConfig['repetitionType'] })}
+                className="w-full bg-gray-100 border-none rounded-xl p-4 text-sm font-medium focus:ring-2 focus:ring-black"
+              >
+                {REPETITION_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-3">
+              <label className="text-sm font-bold flex items-center gap-2 px-1">
+                <Clock size={16} /> Horário
+              </label>
+              <input
+                type="time"
+                value={selectedReminder.time || "08:00"}
+                onChange={(e) => setSelectedReminder({ ...selectedReminder, time: e.target.value })}
+                className="w-full bg-gray-100 border-none rounded-xl p-4 text-sm font-medium focus:ring-2 focus:ring-black"
+              />
+            </div>
+
+            {selectedReminder.repetitionType === 'every_x_hours' && (
+              <div className="space-y-3">
+                <label className="text-sm font-bold flex items-center gap-2 px-1">
+                  <Clock size={16} /> Intervalo
+                </label>
+                <div className="grid grid-cols-4 gap-2">
+                  {HOUR_OPTIONS.map(h => (
+                    <button
+                      key={h}
+                      onClick={() => setSelectedReminder({ ...selectedReminder, intervalHours: h })}
+                      className={`py-3 rounded-xl text-xs font-bold transition-all ${
+                        selectedReminder.intervalHours === h ? "bg-black text-white" : "bg-gray-100 text-gray-500"
+                      }`}
+                    >
+                      {h}h
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {selectedReminder.repetitionType === 'specific_days' && (
+              <div className="space-y-3">
+                <label className="text-sm font-bold flex items-center gap-2 px-1">
+                  <Calendar size={16} /> Dias da Semana
+                </label>
+                <div className="grid grid-cols-7 gap-1">
+                  {DAYS.map((day, idx) => {
+                    const daysOfWeek = selectedReminder.daysOfWeek || [];
+                    const isActive = daysOfWeek.includes(idx);
+                    return (
+                      <button
+                        key={day}
+                        onClick={() => {
+                          const newDays = isActive
+                            ? daysOfWeek.filter(d => d !== idx)
+                            : [...daysOfWeek, idx];
+                          setSelectedReminder({ ...selectedReminder, daysOfWeek: newDays });
+                        }}
+                        className={`py-3 rounded-lg text-[10px] font-bold transition-all ${
+                          isActive ? "bg-black text-white" : "bg-gray-100 text-gray-500"
+                        }`}
+                      >
+                        {day}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div className="bg-gray-50 rounded-2xl p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-gray-400">
+                    <Volume2 size={16} />
+                  </div>
+                  <span className="text-sm font-bold">Som</span>
+                </div>
+                <button
+                  onClick={() => setSelectedReminder({ ...selectedReminder, sound: !selectedReminder.sound })}
+                  className={`w-12 h-6 rounded-full transition-all relative ${selectedReminder.sound ? "bg-black" : "bg-gray-300"}`}
+                >
+                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${selectedReminder.sound ? "right-1" : "left-1"}`} />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-gray-400">
+                    <Vibrate size={16} />
+                  </div>
+                  <span className="text-sm font-bold">Vibração</span>
+                </div>
+                <button
+                  onClick={() => setSelectedReminder({ ...selectedReminder, vibration: !selectedReminder.vibration })}
+                  className={`w-12 h-6 rounded-full transition-all relative ${selectedReminder.vibration ? "bg-black" : "bg-gray-300"}`}
+                >
+                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${selectedReminder.vibration ? "right-1" : "left-1"}`} />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={handleSave}
+            className="fixed bottom-24 left-6 right-6 bg-black text-white py-4 rounded-2xl font-bold shadow-xl flex items-center justify-center gap-2"
+          >
+            SALVAR CONFIGURAÇÃO
+          </button>
+        </div>
+      </AppLayout>
+    );
+  }
+
   return (
     <AppLayout>
       <div className="max-w-2xl mx-auto p-4 pb-24">
@@ -217,7 +397,11 @@ export default function Reminders() {
             if (!type) return null;
             const Icon = type.icon;
             return (
-              <div key={reminder.id} className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 flex items-center gap-4">
+              <div
+                key={reminder.id}
+                className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 flex items-center gap-4 cursor-pointer"
+                onClick={() => { setSelectedReminder({ ...reminder }); setIsConfiguring(true); }}
+              >
                 <div className={`p-3 rounded-2xl bg-gray-50 ${type.color}`}>
                   <Icon size={24} />
                 </div>
@@ -226,7 +410,7 @@ export default function Reminders() {
                   <p className="text-xs text-gray-500 truncate">{type.description}</p>
                 </div>
                 <div
-                  onClick={() => handleToggle(reminder.id, !reminder.enabled)}
+                  onClick={(e) => { e.stopPropagation(); handleToggle(reminder.id, !reminder.enabled); }}
                   className={`w-14 h-8 rounded-full transition-all relative cursor-pointer ${
                     reminder.enabled ? "bg-primary" : "bg-gray-200"
                   }`}
