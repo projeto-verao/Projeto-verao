@@ -399,19 +399,24 @@ export default function Reminders() {
             return (
               <div
                 key={reminder.id}
-                className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 flex items-center gap-4 cursor-pointer"
-                onClick={() => { setSelectedReminder({ ...reminder }); setIsConfiguring(true); }}
+                className="bg-white rounded-3xl shadow-sm border border-gray-100 flex items-center"
               >
-                <div className={`p-3 rounded-2xl bg-gray-50 ${type.color}`}>
-                  <Icon size={24} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-bold text-gray-900 truncate">{type.title}</h3>
-                  <p className="text-xs text-gray-500 truncate">{type.description}</p>
-                </div>
+                <button
+                  type="button"
+                  className="flex items-center gap-4 flex-1 min-w-0 p-5 text-left"
+                  onClick={() => { setSelectedReminder({ ...reminder }); setIsConfiguring(true); }}
+                >
+                  <div className={`p-3 rounded-2xl bg-gray-50 ${type.color} shrink-0`}>
+                    <Icon size={24} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-bold text-gray-900 truncate">{type.title}</h3>
+                    <p className="text-xs text-gray-500 truncate">{type.description}</p>
+                  </div>
+                </button>
                 <div
-                  onClick={(e) => { e.stopPropagation(); handleToggle(reminder.id, !reminder.enabled); }}
-                  className={`w-14 h-8 rounded-full transition-all relative cursor-pointer ${
+                  onClick={() => handleToggle(reminder.id, !reminder.enabled)}
+                  className={`w-14 h-8 rounded-full transition-all relative cursor-pointer shrink-0 mr-5 ${
                     reminder.enabled ? "bg-primary" : "bg-gray-200"
                   }`}
                 >
