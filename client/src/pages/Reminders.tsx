@@ -30,11 +30,11 @@ import {
 import { toast } from "sonner";
 
 const REMINDER_TYPES = [
-  { id: "water", title: "Beber água", description: "Lembrete para hidratação constante", icon: Droplets, color: "text-blue-500", repetitionType: 'daily', time: '08:00', intervalHours: 2, daysOfWeek: [1, 2, 3, 4, 5], sound: true, vibration: true, repeatUntilDone: false },
+  { id: "water", title: "Beber água", description: "Lembrete para hidratação constante", icon: Droplets, color: "text-blue-500", repetitionType: 'every_x_hours', time: '08:00', intervalHours: 2, daysOfWeek: [1, 2, 3, 4, 5], sound: true, vibration: true, repeatUntilDone: false },
   { id: "movement", title: "Se movimentar", description: "Evite ficar muito tempo sentado", icon: Activity, color: "text-orange-500", repetitionType: 'every_x_hours', time: '10:00', intervalHours: 2, daysOfWeek: [1, 2, 3, 4, 5], sound: true, vibration: true, repeatUntilDone: false },
-  { id: "food_log", title: "Registrar alimentação", description: "Não esqueça de anotar suas refeições", icon: Utensils, color: "text-green-500", repetitionType: 'daily', time: '12:00', intervalHours: 2, daysOfWeek: [1, 2, 3, 4, 5], sound: true, vibration: true, repeatUntilDone: false },
-  { id: "calories", title: "Meta de calorias", description: "Acompanhe seu balanço energético", icon: Flame, color: "text-red-500", repetitionType: 'daily', time: '18:00', intervalHours: 2, daysOfWeek: [1, 2, 3, 4, 5], sound: true, vibration: true, repeatUntilDone: false },
-  { id: "protein", title: "Meta de proteínas", description: "Garanta o aporte proteico diário", icon: Beef, color: "text-amber-700", repetitionType: 'daily', time: '18:00', intervalHours: 2, daysOfWeek: [1, 2, 3, 4, 5], sound: true, vibration: true, repeatUntilDone: false },
+  { id: "food_log", title: "Registrar alimentação", description: "Não esqueça de anotar suas refeições", icon: Utensils, color: "text-green-500", repetitionType: 'every_x_hours', time: '12:00', intervalHours: 3, daysOfWeek: [1, 2, 3, 4, 5], sound: true, vibration: true, repeatUntilDone: false },
+  { id: "calories", title: "Meta de calorias", description: "Acompanhe seu balanço energético", icon: Flame, color: "text-red-500", repetitionType: 'every_x_hours', time: '18:00', intervalHours: 4, daysOfWeek: [1, 2, 3, 4, 5], sound: true, vibration: true, repeatUntilDone: false },
+  { id: "protein", title: "Meta de proteínas", description: "Garanta o aporte proteico diário", icon: Beef, color: "text-amber-700", repetitionType: 'every_x_hours', time: '18:00', intervalHours: 4, daysOfWeek: [1, 2, 3, 4, 5], sound: true, vibration: true, repeatUntilDone: false },
   { id: "training_remind", title: "Lembrete de treino", description: "Hora de ir para a academia", icon: Dumbbell, color: "text-slate-700", repetitionType: 'daily', time: '17:00', intervalHours: 2, daysOfWeek: [1, 2, 3, 4, 5], sound: true, vibration: true, repeatUntilDone: false },
   { id: "sleep", title: "Hora de dormir", description: "Mantenha a higiene do sono", icon: Moon, color: "text-indigo-600", repetitionType: 'daily', time: '22:00', intervalHours: 2, daysOfWeek: [1, 2, 3, 4, 5], sound: true, vibration: true, repeatUntilDone: false },
   { id: "weight", title: "Registrar peso", description: "Acompanhe sua evolução na balança", icon: Scale, color: "text-gray-600", repetitionType: 'daily', time: '07:00', intervalHours: 2, daysOfWeek: [1, 2, 3, 4, 5], sound: true, vibration: true, repeatUntilDone: false },
@@ -138,13 +138,13 @@ export default function Reminders() {
           description: type.description,
           icon: type.id,
           enabled: false,
-          repetitionType: 'daily' as const,
-          time: '08:00',
-          intervalHours: 2,
-          daysOfWeek: [1, 2, 3, 4, 5],
-          sound: true,
-          vibration: true,
-          repeatUntilDone: false
+          repetitionType: type.repetitionType as ReminderConfig['repetitionType'],
+          time: type.time,
+          intervalHours: type.intervalHours,
+          daysOfWeek: type.daysOfWeek,
+          sound: type.sound,
+          vibration: type.vibration,
+          repeatUntilDone: type.repeatUntilDone
         })) as ReminderConfig[];
         firestoreService.saveAllReminders(user.uid, defaultReminders);
       } else {
@@ -414,16 +414,19 @@ export default function Reminders() {
                     <p className="text-xs text-gray-500 truncate">{type.description}</p>
                   </div>
                 </button>
-                <div
+                <button
+                  type="button"
+                  aria-pressed={reminder.enabled}
+                  aria-label={reminder.enabled ? `Desativar ${type.title}` : `Ativar ${type.title}`}
                   onClick={() => handleToggle(reminder.id, !reminder.enabled)}
-                  className={`w-14 h-8 rounded-full transition-all relative cursor-pointer shrink-0 mr-5 ${
+                  className={`w-14 h-8 rounded-full transition-all relative shrink-0 mr-5 ${
                     reminder.enabled ? "bg-primary" : "bg-gray-200"
                   }`}
                 >
                   <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all shadow-sm ${
                     reminder.enabled ? "left-7" : "left-1"
                   }`} />
-                </div>
+                </button>
               </div>
             );
           })}

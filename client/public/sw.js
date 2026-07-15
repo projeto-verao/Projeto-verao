@@ -1,4 +1,4 @@
-// ─── Projeto Verão – Service Worker v3.0 ──────────────────────────────────────
+// ─── Projeto Verão – Service Worker v5.0 ──────────────────────────────────────
 // Suporte: FCM Push (nativo Android) + Notificações Locais + Agendamento
 // 
 // FCM Push: Recebe notificações nativas do Android via Google Play Services
@@ -6,8 +6,15 @@
 //
 // Notificações Locais: Agendamento via postMessage do cliente (fallback).
 // Ambos coexistem: FCM é o canal principal, local é fallback.
+//
+// Estratégia de cache:
+// - Navegação (HTML/rotas): network-first, para que novos deploys apareçam
+//   imediatamente em qualquer dispositivo, sem prender o usuário em uma
+//   versão antiga da PWA. Cache é usado apenas como fallback offline.
+// - Assets estáticos versionados (JS/CSS/imagens com hash do build): cache-first,
+//   pois o nome do arquivo muda a cada build e não há risco de servir conteúdo velho.
 
-const CACHE_NAME = 'projeto-verao-v3';
+const CACHE_NAME = 'projeto-verao-v5';
 
 // ── Caching ──────────────────────────────────────────────────────────────────
 
@@ -32,14 +39,39 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  const { request } = event;
+
+  // Apenas GET é cacheável; outros métodos seguem direto para a rede.
+  if (request.method !== 'GET') return;
+
+  const isNavigation = request.mode === 'navigate' || request.destination === 'document';
+
+  if (isNavigation) {
+    // Network-first para navegação: sempre busca a versão mais nova do servidor.
+    // Isso evita que celulares fiquem presos em versões antigas da PWA após um deploy.
+    event.respondWith(
+      fetch(request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.ok) {
+            const responseClone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone));
+          }
+          return networkResponse;
+        })
+        .catch(() =>
+          caches.match(request).then((cached) => cached || caches.match('/index.html'))
+        )
+    );
+    return;
+  }
+
+  // Cache-first para assets estáticos versionados (JS/CSS/imagens com hash do build).
   event.respondWith(
-    caches.match(event.request).then((response) => {
-      return response || fetch(event.request).then((fetchResponse) => {
-        if (event.request.method === 'GET' && event.request.url.startsWith(self.location.origin)) {
-          return caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, fetchResponse.clone());
-            return fetchResponse;
-          });
+    caches.match(request).then((response) => {
+      return response || fetch(request).then((fetchResponse) => {
+        if (request.url.startsWith(self.location.origin)) {
+          const responseClone = fetchResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone));
         }
         return fetchResponse;
       });
