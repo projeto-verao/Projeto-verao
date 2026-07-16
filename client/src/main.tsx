@@ -125,6 +125,15 @@ function setupForegroundMessaging() {
 // ─── Service Worker Registration ────────────────────────────────────────────
 
 if ('serviceWorker' in navigator) {
+  // ─── Reload automático quando novo SW assume o controle ─────────────────────
+  // Quando um novo sw.js é detectado e assume via skipWaiting()/clients.claim(),
+  // o evento 'controllerchange' dispara. Recarregar garante que o usuário
+  // veja imediatamente a nova versão em vez de continuar com assets velhos.
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    console.log('[SW] Novo service worker ativo — recarregando para nova versão...');
+    window.location.reload();
+  });
+
   window.addEventListener('load', async () => {
     try {
       const registration = await navigator.serviceWorker.register('/sw.js');
