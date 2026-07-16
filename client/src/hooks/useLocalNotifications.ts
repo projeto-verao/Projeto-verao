@@ -147,9 +147,11 @@ export function useRecurringReminders() {
       description: string;
       repetitionType: string;
       time?: string;
+      timeStart?: string;
+      timeEnd?: string;
       intervalHours?: number;
       daysOfWeek?: number[];
-      enabled?: boolean; // Adicionado para corrigir erro de tipo
+      enabled?: boolean;
     }
   ): Promise<boolean> => {
     if (!reminder.enabled) {
@@ -199,91 +201,106 @@ export function useRecurringReminders() {
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
 /**
- * Calcula o delay em ms até a próxima notificação
+ * Calcula o delay em ms até a próxima notificação.
+ *
+ * Novo modelo:
+ *  - once_a_day  → agenda às `time` nos dias em `daysOfWeek`
+ *  - every_x_hours → agenda slots de `intervalHours` dentro da janela
+ *                    [timeStart, timeEnd] nos dias em `daysOfWeek`
+ *
+ * Tipos legados (migração automática):
+ *  - daily, specific_days, training_days, workdays → tratados como once_a_day
+ *    usando o `daysOfWeek` já salvo no lembrete.
  */
 function calculateNextDelivery(reminder: {
   repetitionType: string;
   time?: string;
+  timeStart?: string;
+  timeEnd?: string;
   intervalHours?: number;
   daysOfWeek?: number[];
 }): number {
   const now = new Date();
-  const [hours, minutes] = (reminder.time || "08:00").split(":").map(Number);
 
-  switch (reminder.repetitionType) {
+  // Se não houver dias configurados, considera todos os dias da semana
+  const effectiveDays =
+    reminder.daysOfWeek && reminder.daysOfWeek.length > 0
+      ? reminder.daysOfWeek
+      : [0, 1, 2, 3, 4, 5, 6];
+
+  // Normaliza tipos legados → novo modelo
+  const normalizedType = (() => {
+    switch (reminder.repetitionType) {
+      case "daily":
+      case "specific_days":
+      case "training_days":
+      case "workdays":
+        return "once_a_day";
+      default:
+        return reminder.repetitionType;
+    }
+  })();
+
+  switch (normalizedType) {
+    // ── Uma vez por dia ────────────────────────────────────────────────────────
     case "once_a_day": {
-      const target = new Date(now);
-      target.setHours(hours, minutes, 0, 0);
-      if (target <= now) target.setDate(target.getDate() + 1);
-      return target.getTime() - now.getTime();
+      const [hours, minutes] = (reminder.time || "08:00").split(":").map(Number);
+      // Encontra o próximo dia válido (incluindo hoje se o horário ainda não passou)
+      for (let i = 0; i < 7; i++) {
+        const checkDate = new Date(now);
+        checkDate.setDate(now.getDate() + i);
+        if (effectiveDays.includes(checkDate.getDay())) {
+          checkDate.setHours(hours, minutes, 0, 0);
+          if (checkDate > now) return checkDate.getTime() - now.getTime();
+        }
+      }
+      return -1;
     }
 
-    case "daily": {
-      const target = new Date(now);
-      target.setHours(hours, minutes, 0, 0);
-      if (target <= now) target.setDate(target.getDate() + 1);
-      return target.getTime() - now.getTime();
-    }
-
+    // ── A cada X horas (janela timeStart → timeEnd) ───────────────────────────
     case "every_x_hours": {
       const intervalMs = (reminder.intervalHours || 2) * 60 * 60 * 1000;
-      return intervalMs; // Próximo em X horas a partir de agora
-    }
+      const [startH, startM] = (reminder.timeStart || reminder.time || "08:00")
+        .split(":")
+        .map(Number);
+      const [endH, endM] = (reminder.timeEnd || "22:00").split(":").map(Number);
 
-    case "specific_days": {
-      const daysOfWeek = reminder.daysOfWeek || [1, 2, 3, 4, 5];
-      const target = new Date(now);
-      target.setHours(hours, minutes, 0, 0);
-      
-      // Encontrar o próximo dia válido
-      for (let i = 0; i < 7; i++) {
-        const checkDate = new Date(now);
-        checkDate.setDate(now.getDate() + i);
-        if (daysOfWeek.includes(checkDate.getDay())) {
-          checkDate.setHours(hours, minutes, 0, 0);
-          if (i === 0 && checkDate <= now) {
-            // Hoje já passou, procurar próximo
-            continue;
+      for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
+        const checkDay = new Date(now);
+        checkDay.setDate(now.getDate() + dayOffset);
+
+        if (!effectiveDays.includes(checkDay.getDay())) continue;
+
+        const dayStart = new Date(checkDay);
+        dayStart.setHours(startH, startM, 0, 0);
+        const dayEnd = new Date(checkDay);
+        dayEnd.setHours(endH, endM, 0, 0);
+
+        if (dayOffset === 0) {
+          // Hoje: encontrar próximo slot dentro da janela
+          if (now >= dayEnd) continue; // janela já fechou hoje
+
+          let nextSlot: Date;
+          if (now < dayStart) {
+            // Janela ainda não abriu hoje
+            nextSlot = dayStart;
+          } else {
+            // Dentro da janela: próximo múltiplo do intervalo
+            const elapsedMs = now.getTime() - dayStart.getTime();
+            const slots = Math.ceil(elapsedMs / intervalMs);
+            nextSlot = new Date(dayStart.getTime() + slots * intervalMs);
           }
-          if (checkDate > now) return checkDate.getTime() - now.getTime();
-        }
-      }
-      return -1;
-    }
 
-    case "training_days": {
-      // Mesma lógica que specific_days, mas com dias de treino
-      const daysOfWeek = reminder.daysOfWeek || [1, 3, 5];
-      const target = new Date(now);
-      target.setHours(hours, minutes, 0, 0);
-      
-      for (let i = 0; i < 7; i++) {
-        const checkDate = new Date(now);
-        checkDate.setDate(now.getDate() + i);
-        if (daysOfWeek.includes(checkDate.getDay())) {
-          checkDate.setHours(hours, minutes, 0, 0);
-          if (i === 0 && checkDate <= now) continue;
-          if (checkDate > now) return checkDate.getTime() - now.getTime();
+          if (nextSlot <= dayEnd && nextSlot > now) {
+            return nextSlot.getTime() - now.getTime();
+          }
+        } else {
+          // Dia futuro: agendar no início da janela
+          return dayStart.getTime() - now.getTime();
         }
       }
-      return -1;
-    }
 
-    case "workdays": {
-      const target = new Date(now);
-      target.setHours(hours, minutes, 0, 0);
-      
-      for (let i = 0; i < 7; i++) {
-        const checkDate = new Date(now);
-        checkDate.setDate(now.getDate() + i);
-        const day = checkDate.getDay();
-        if (day !== 0 && day !== 6) { // Segunda a Sexta
-          checkDate.setHours(hours, minutes, 0, 0);
-          if (i === 0 && checkDate <= now) continue;
-          if (checkDate > now) return checkDate.getTime() - now.getTime();
-        }
-      }
-      return -1;
+      return intervalMs; // fallback: reagenda no próximo intervalo
     }
 
     default:

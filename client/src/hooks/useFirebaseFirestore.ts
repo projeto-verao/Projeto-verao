@@ -155,7 +155,9 @@ export interface ReminderConfig {
   description: string;
   icon: string;
   repetitionType: 'once_a_day' | 'every_x_hours' | 'specific_days' | 'training_days' | 'workdays' | 'daily';
-  time?: string; // HH:mm
+  time?: string;      // HH:mm — horário único (once_a_day)
+  timeStart?: string; // HH:mm — hora inicial da janela (every_x_hours)
+  timeEnd?: string;   // HH:mm — hora final da janela (every_x_hours)
   intervalHours?: number;
   daysOfWeek?: number[]; // 0-6
   sound: boolean;

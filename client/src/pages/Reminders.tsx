@@ -3,19 +3,19 @@ import AppLayout from "@/components/AppLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { firestoreService, ReminderConfig } from "@/hooks/useFirebaseFirestore";
 import { useRecurringReminders } from "@/hooks/useLocalNotifications";
-import { 
-  Bell, 
-  Droplets, 
-  Activity, 
-  Utensils, 
-  Flame, 
-  Beef, 
-  Dumbbell, 
-  Moon, 
-  Scale, 
-  Camera, 
-  Ruler, 
-  Pill, 
+import {
+  Bell,
+  Droplets,
+  Activity,
+  Utensils,
+  Flame,
+  Beef,
+  Dumbbell,
+  Moon,
+  Scale,
+  Camera,
+  Ruler,
+  Pill,
   CheckCircle2,
   ChevronRight,
   ChevronLeft,
@@ -25,45 +25,82 @@ import {
   Vibrate,
   Sparkles,
   BellOff,
-  BellRing
+  BellRing,
 } from "lucide-react";
 import { toast } from "sonner";
 
-const REMINDER_TYPES = [
-  { id: "water", title: "Beber água", description: "Lembrete para hidratação constante", icon: Droplets, color: "text-blue-500", repetitionType: 'every_x_hours', time: '08:00', intervalHours: 2, daysOfWeek: [1, 2, 3, 4, 5], sound: true, vibration: true, repeatUntilDone: false },
-  { id: "movement", title: "Se movimentar", description: "Evite ficar muito tempo sentado", icon: Activity, color: "text-orange-500", repetitionType: 'every_x_hours', time: '10:00', intervalHours: 2, daysOfWeek: [1, 2, 3, 4, 5], sound: true, vibration: true, repeatUntilDone: false },
-  { id: "food_log", title: "Registrar alimentação", description: "Não esqueça de anotar suas refeições", icon: Utensils, color: "text-green-500", repetitionType: 'every_x_hours', time: '12:00', intervalHours: 3, daysOfWeek: [1, 2, 3, 4, 5], sound: true, vibration: true, repeatUntilDone: false },
-  { id: "calories", title: "Meta de calorias", description: "Acompanhe seu balanço energético", icon: Flame, color: "text-red-500", repetitionType: 'every_x_hours', time: '18:00', intervalHours: 4, daysOfWeek: [1, 2, 3, 4, 5], sound: true, vibration: true, repeatUntilDone: false },
-  { id: "protein", title: "Meta de proteínas", description: "Garanta o aporte proteico diário", icon: Beef, color: "text-amber-700", repetitionType: 'every_x_hours', time: '18:00', intervalHours: 4, daysOfWeek: [1, 2, 3, 4, 5], sound: true, vibration: true, repeatUntilDone: false },
-  { id: "training_remind", title: "Lembrete de treino", description: "Hora de ir para a academia", icon: Dumbbell, color: "text-slate-700", repetitionType: 'daily', time: '17:00', intervalHours: 2, daysOfWeek: [1, 2, 3, 4, 5], sound: true, vibration: true, repeatUntilDone: false },
-  { id: "sleep", title: "Hora de dormir", description: "Mantenha a higiene do sono", icon: Moon, color: "text-indigo-600", repetitionType: 'daily', time: '22:00', intervalHours: 2, daysOfWeek: [1, 2, 3, 4, 5], sound: true, vibration: true, repeatUntilDone: false },
-  { id: "weight", title: "Registrar peso", description: "Acompanhe sua evolução na balança", icon: Scale, color: "text-gray-600", repetitionType: 'daily', time: '07:00', intervalHours: 2, daysOfWeek: [1, 2, 3, 4, 5], sound: true, vibration: true, repeatUntilDone: false },
-  { id: "evolution_photo", title: "Foto de evolução", description: "Registre seu progresso visual", icon: Camera, color: "text-purple-500", repetitionType: 'specific_days', time: '09:00', intervalHours: 2, daysOfWeek: [0], sound: true, vibration: true, repeatUntilDone: false },
-  { id: "measurements", title: "Atualizar medidas", description: "Mantenha suas medidas em dia", icon: Ruler, color: "text-blue-600", repetitionType: 'specific_days', time: '09:00', intervalHours: 2, daysOfWeek: [0], sound: true, vibration: true, repeatUntilDone: false },
-  { id: "supplements", title: "Suplementos", description: "Não esqueça de tomar sua suplementação", icon: Pill, color: "text-cyan-500", repetitionType: 'every_x_hours', time: '09:00', intervalHours: 4, daysOfWeek: [1, 2, 3, 4, 5], sound: true, vibration: true, repeatUntilDone: false },
-  { id: "training_log", title: "Registrar treino", description: "Anote as cargas e repetições", icon: CheckCircle2, color: "text-emerald-600", repetitionType: 'training_days', time: '19:00', intervalHours: 2, daysOfWeek: [1, 3, 5], sound: true, vibration: true, repeatUntilDone: false },
-];
+// ─── Constantes ────────────────────────────────────────────────────────────────
 
-const REPETITION_OPTIONS = [
-  { value: 'once_a_day', label: 'Uma vez por dia' },
-  { value: 'every_x_hours', label: 'A cada X horas' },
-  { value: 'specific_days', label: 'Dias específicos' },
-  { value: 'training_days', label: 'Apenas em dias de treino' },
-  { value: 'workdays', label: 'Apenas dias úteis' },
-  { value: 'daily', label: 'Todos os dias' },
+const REMINDER_TYPES = [
+  { id: "water",          title: "Beber água",              description: "Lembrete para hidratação constante",        icon: Droplets,      color: "text-blue-500",    repetitionType: "every_x_hours" as const, time: "08:00", timeStart: "08:00", timeEnd: "22:00", intervalHours: 2,  daysOfWeek: [1, 2, 3, 4, 5],       sound: true, vibration: true, repeatUntilDone: false },
+  { id: "movement",       title: "Se movimentar",           description: "Evite ficar muito tempo sentado",           icon: Activity,      color: "text-orange-500",  repetitionType: "every_x_hours" as const, time: "10:00", timeStart: "08:00", timeEnd: "20:00", intervalHours: 2,  daysOfWeek: [1, 2, 3, 4, 5],       sound: true, vibration: true, repeatUntilDone: false },
+  { id: "food_log",       title: "Registrar alimentação",   description: "Não esqueça de anotar suas refeições",      icon: Utensils,      color: "text-green-500",   repetitionType: "every_x_hours" as const, time: "12:00", timeStart: "08:00", timeEnd: "21:00", intervalHours: 3,  daysOfWeek: [1, 2, 3, 4, 5],       sound: true, vibration: true, repeatUntilDone: false },
+  { id: "calories",       title: "Meta de calorias",        description: "Acompanhe seu balanço energético",          icon: Flame,         color: "text-red-500",     repetitionType: "every_x_hours" as const, time: "18:00", timeStart: "08:00", timeEnd: "21:00", intervalHours: 4,  daysOfWeek: [1, 2, 3, 4, 5],       sound: true, vibration: true, repeatUntilDone: false },
+  { id: "protein",        title: "Meta de proteínas",       description: "Garanta o aporte proteico diário",          icon: Beef,          color: "text-amber-700",   repetitionType: "every_x_hours" as const, time: "18:00", timeStart: "08:00", timeEnd: "21:00", intervalHours: 4,  daysOfWeek: [1, 2, 3, 4, 5],       sound: true, vibration: true, repeatUntilDone: false },
+  { id: "training_remind",title: "Lembrete de treino",      description: "Hora de ir para a academia",                icon: Dumbbell,      color: "text-slate-700",   repetitionType: "once_a_day"   as const, time: "17:00", timeStart: "17:00", timeEnd: "20:00", intervalHours: 2,  daysOfWeek: [1, 2, 3, 4, 5],       sound: true, vibration: true, repeatUntilDone: false },
+  { id: "sleep",          title: "Hora de dormir",          description: "Mantenha a higiene do sono",                icon: Moon,          color: "text-indigo-600",  repetitionType: "once_a_day"   as const, time: "22:00", timeStart: "22:00", timeEnd: "23:00", intervalHours: 2,  daysOfWeek: [0, 1, 2, 3, 4, 5, 6], sound: true, vibration: true, repeatUntilDone: false },
+  { id: "weight",         title: "Registrar peso",          description: "Acompanhe sua evolução na balança",         icon: Scale,         color: "text-gray-600",    repetitionType: "once_a_day"   as const, time: "07:00", timeStart: "07:00", timeEnd: "08:00", intervalHours: 2,  daysOfWeek: [0, 1, 2, 3, 4, 5, 6], sound: true, vibration: true, repeatUntilDone: false },
+  { id: "evolution_photo",title: "Foto de evolução",        description: "Registre seu progresso visual",             icon: Camera,        color: "text-purple-500",  repetitionType: "once_a_day"   as const, time: "09:00", timeStart: "09:00", timeEnd: "10:00", intervalHours: 2,  daysOfWeek: [0],                    sound: true, vibration: true, repeatUntilDone: false },
+  { id: "measurements",   title: "Atualizar medidas",       description: "Mantenha suas medidas em dia",              icon: Ruler,         color: "text-blue-600",    repetitionType: "once_a_day"   as const, time: "09:00", timeStart: "09:00", timeEnd: "10:00", intervalHours: 2,  daysOfWeek: [0],                    sound: true, vibration: true, repeatUntilDone: false },
+  { id: "supplements",    title: "Suplementos",             description: "Não esqueça de tomar sua suplementação",   icon: Pill,          color: "text-cyan-500",    repetitionType: "every_x_hours" as const, time: "09:00", timeStart: "09:00", timeEnd: "21:00", intervalHours: 4,  daysOfWeek: [1, 2, 3, 4, 5],       sound: true, vibration: true, repeatUntilDone: false },
+  { id: "training_log",   title: "Registrar treino",        description: "Anote as cargas e repetições",              icon: CheckCircle2,  color: "text-emerald-600", repetitionType: "once_a_day"   as const, time: "19:00", timeStart: "19:00", timeEnd: "21:00", intervalHours: 2,  daysOfWeek: [1, 3, 5],              sound: true, vibration: true, repeatUntilDone: false },
 ];
 
 const HOUR_OPTIONS = [1, 2, 3, 4, 6, 8, 12];
-const DAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+// Dom=0, Seg=1, Ter=2, Qua=3, Qui=4, Sex=5, Sáb=6
+const DAYS_LABELS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
+// ─── Migração de formato antigo → novo ────────────────────────────────────────
+
+/**
+ * Converte lembretes salvos no formato antigo (workdays, daily, specific_days,
+ * training_days) para o novo modelo baseado em daysOfWeek + repetitionType
+ * once_a_day / every_x_hours.
+ */
+function migrateReminderConfig(config: ReminderConfig): ReminderConfig {
+  const { repetitionType, daysOfWeek } = config;
+
+  // Já no novo formato
+  if (repetitionType === "once_a_day" || repetitionType === "every_x_hours") {
+    if (!config.daysOfWeek || config.daysOfWeek.length === 0) {
+      return { ...config, daysOfWeek: [0, 1, 2, 3, 4, 5, 6] };
+    }
+    return config;
+  }
+
+  // Migrar tipos legados
+  switch (repetitionType) {
+    case "daily":
+      return { ...config, repetitionType: "once_a_day", daysOfWeek: [0, 1, 2, 3, 4, 5, 6] };
+    case "workdays":
+      return { ...config, repetitionType: "once_a_day", daysOfWeek: [1, 2, 3, 4, 5] };
+    case "specific_days":
+      return {
+        ...config,
+        repetitionType: "once_a_day",
+        daysOfWeek: daysOfWeek && daysOfWeek.length > 0 ? daysOfWeek : [1, 2, 3, 4, 5],
+      };
+    case "training_days":
+      return {
+        ...config,
+        repetitionType: "once_a_day",
+        daysOfWeek: daysOfWeek && daysOfWeek.length > 0 ? daysOfWeek : [1, 3, 5],
+      };
+    default:
+      return { ...config, repetitionType: "once_a_day", daysOfWeek: [0, 1, 2, 3, 4, 5, 6] };
+  }
+}
+
+// ─── Banner de permissão ───────────────────────────────────────────────────────
 
 function NotificationPermissionBanner() {
-  const [permission, setPermission] = useState<NotificationPermission | 'checking'>('checking');
+  const [permission, setPermission] = useState<NotificationPermission | "checking">("checking");
 
   useEffect(() => {
-    if ('Notification' in window) {
+    if ("Notification" in window) {
       setPermission(Notification.permission);
     } else {
-      setPermission('denied');
+      setPermission("denied");
     }
   }, []);
 
@@ -85,7 +122,7 @@ function NotificationPermissionBanner() {
   return (
     <button
       onClick={async () => {
-        if ('Notification' in window) {
+        if ("Notification" in window) {
           await Notification.requestPermission();
           setPermission(Notification.permission);
         }
@@ -104,26 +141,29 @@ function NotificationPermissionBanner() {
   );
 }
 
+// ─── Componente principal ──────────────────────────────────────────────────────
+
 export default function Reminders() {
   const { user } = useAuth();
   const [reminders, setReminders] = useState<ReminderConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedReminder, setSelectedReminder] = useState<ReminderConfig | null>(null);
   const [isConfiguring, setIsConfiguring] = useState(false);
-  const [selectedProfile, setSelectedProfile] = useState<'basic' | 'fitness'>('basic');
+  const [selectedProfile, setSelectedProfile] = useState<"basic" | "fitness">("basic");
   const initialLoadDone = useRef(false);
   const hasScheduledOnOpen = useRef(false);
   const { scheduleNextReminder, rescheduleOnAppOpen } = useRecurringReminders();
 
-  const basicRemindersIds = ['water', 'food_log', 'training_remind'];
-  const fitnessRemindersIds = ['water', 'food_log', 'protein', 'calories', 'training_remind', 'weight', 'evolution_photo'];
+  const basicRemindersIds = ["water", "food_log", "training_remind"];
+  const fitnessRemindersIds = ["water", "food_log", "protein", "calories", "training_remind", "weight", "evolution_photo"];
 
-  const filteredReminders = reminders.filter(reminder => {
-    if (selectedProfile === 'basic') return basicRemindersIds.includes(reminder.id);
-    if (selectedProfile === 'fitness') return fitnessRemindersIds.includes(reminder.id);
+  const filteredReminders = reminders.filter((reminder) => {
+    if (selectedProfile === "basic") return basicRemindersIds.includes(reminder.id);
+    if (selectedProfile === "fitness") return fitnessRemindersIds.includes(reminder.id);
     return false;
   });
 
+  // ── Carregar lembretes do Firestore e migrar formato antigo ────────────────
   useEffect(() => {
     if (!user) {
       setLoading(false);
@@ -131,24 +171,35 @@ export default function Reminders() {
     }
     const unsubscribe = firestoreService.subscribeToReminders(user.uid, (configs) => {
       if (configs.length === 0 && !initialLoadDone.current) {
-        const defaultReminders = REMINDER_TYPES.map(type => ({
+        // Primeiro acesso: criar padrões no novo formato
+        const defaultReminders = REMINDER_TYPES.map((type) => ({
           id: type.id,
           type: type.id,
           title: type.title,
           description: type.description,
           icon: type.id,
           enabled: false,
-          repetitionType: type.repetitionType as ReminderConfig['repetitionType'],
+          repetitionType: type.repetitionType as ReminderConfig["repetitionType"],
           time: type.time,
+          timeStart: type.timeStart,
+          timeEnd: type.timeEnd,
           intervalHours: type.intervalHours,
           daysOfWeek: type.daysOfWeek,
           sound: type.sound,
           vibration: type.vibration,
-          repeatUntilDone: type.repeatUntilDone
+          repeatUntilDone: type.repeatUntilDone,
         })) as ReminderConfig[];
         firestoreService.saveAllReminders(user.uid, defaultReminders);
       } else {
-        setReminders(configs);
+        // Migrar automaticamente configs no formato antigo
+        const migrated = configs.map(migrateReminderConfig);
+        const needsSave = migrated.some(
+          (m, i) => m.repetitionType !== configs[i].repetitionType || !configs[i].daysOfWeek?.length
+        );
+        if (needsSave) {
+          firestoreService.saveAllReminders(user.uid, migrated);
+        }
+        setReminders(migrated);
       }
       setLoading(false);
       initialLoadDone.current = true;
@@ -156,66 +207,77 @@ export default function Reminders() {
     return () => unsubscribe();
   }, [user]);
 
-  // Reagendar todos os lembretes ativos ao abrir o app
+  // ── Reagendar lembretes ao abrir o app ────────────────────────────────────
   useEffect(() => {
-    if (reminders.length > 0 && !hasScheduledOnOpen.current && 'serviceWorker' in navigator) {
+    if (reminders.length > 0 && !hasScheduledOnOpen.current && "serviceWorker" in navigator) {
       hasScheduledOnOpen.current = true;
-      rescheduleOnAppOpen(reminders).then(count => {
-        if (count > 0) {
-          console.log(`[Reminders] ${count} lembrete(s) reagendado(s) ao abrir o app`);
-        }
-      }).catch(err => {
-        console.warn('[Reminders] Erro ao reagendar lembretes:', err);
-      });
+      rescheduleOnAppOpen(reminders)
+        .then((count) => {
+          if (count > 0) {
+            console.log(`[Reminders] ${count} lembrete(s) reagendado(s) ao abrir o app`);
+          }
+        })
+        .catch((err) => {
+          console.warn("[Reminders] Erro ao reagendar lembretes:", err);
+        });
     }
   }, [reminders, rescheduleOnAppOpen]);
 
+  // ── Toggle ativo/inativo ───────────────────────────────────────────────────
   const handleToggle = async (id: string, enabled: boolean) => {
     if (!user) return;
     try {
-      // Solicitar permissão se necessário ao ativar um lembrete
-      if (enabled && 'Notification' in window && Notification.permission === 'default') {
+      if (enabled && "Notification" in window && Notification.permission === "default") {
         const permission = await Notification.requestPermission();
-        if (permission !== 'granted') {
+        if (permission !== "granted") {
           toast.error("Permissão de notificação negada. Ative nas configurações do navegador.");
           return;
         }
       }
-
       await firestoreService.updateReminder(user.uid, id, { enabled });
-
-      // Agendar ou cancelar a notificação correspondente
-      const reminder = reminders.find(r => r.id === id);
-      if (reminder && 'serviceWorker' in navigator) {
+      const reminder = reminders.find((r) => r.id === id);
+      if (reminder && "serviceWorker" in navigator) {
         await scheduleNextReminder({ ...reminder, enabled });
       }
-
       toast.success(enabled ? "Lembrete ativado!" : "Lembrete desativado!");
-    } catch (err) {
+    } catch {
       toast.error("Erro ao atualizar lembrete.");
     }
   };
 
+  // ── Salvar configuração ────────────────────────────────────────────────────
   const handleSave = async () => {
     if (!user || !selectedReminder) return;
     try {
       await firestoreService.updateReminderConfig(user.uid, selectedReminder);
-      if (selectedReminder.enabled && 'serviceWorker' in navigator) {
+      if (selectedReminder.enabled && "serviceWorker" in navigator) {
         await scheduleNextReminder(selectedReminder);
       }
       setIsConfiguring(false);
       setSelectedReminder(null);
       toast.success("Configuração salva!");
-    } catch (err) {
+    } catch {
       toast.error("Erro ao salvar configuração.");
     }
   };
 
+  // ── Tela de configuração ───────────────────────────────────────────────────
   if (isConfiguring && selectedReminder) {
-    const ConfigIcon = REMINDER_TYPES.find(t => t.id === selectedReminder.id)?.icon || Bell;
+    const ConfigIcon = REMINDER_TYPES.find((t) => t.id === selectedReminder.id)?.icon || Bell;
+    const isEveryXHours = selectedReminder.repetitionType === "every_x_hours";
+
+    const toggleDay = (dayIdx: number) => {
+      const current = selectedReminder.daysOfWeek || [];
+      const updated = current.includes(dayIdx)
+        ? current.filter((d) => d !== dayIdx)
+        : [...current, dayIdx].sort((a, b) => a - b);
+      setSelectedReminder({ ...selectedReminder, daysOfWeek: updated });
+    };
+
     return (
       <AppLayout>
-        <div className="p-4 pb-24">
+        <div className="p-4 pb-32">
+          {/* Cabeçalho */}
           <button
             onClick={() => { setIsConfiguring(false); setSelectedReminder(null); }}
             className="flex items-center gap-2 text-gray-600 mb-6 hover:text-black transition-colors"
@@ -235,84 +297,143 @@ export default function Reminders() {
           </div>
 
           <div className="space-y-6">
+
+            {/* ── 1. DIAS ─────────────────────────────────────────────────── */}
             <div className="space-y-3">
               <label className="text-sm font-bold flex items-center gap-2 px-1">
-                <Calendar size={16} /> Tipo de Repetição
+                <Calendar size={16} /> Dias
               </label>
-              <select
-                value={selectedReminder.repetitionType}
-                onChange={(e) => setSelectedReminder({ ...selectedReminder, repetitionType: e.target.value as ReminderConfig['repetitionType'] })}
-                className="w-full bg-gray-100 border-none rounded-xl p-4 text-sm font-medium focus:ring-2 focus:ring-black"
-              >
-                {REPETITION_OPTIONS.map(opt => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-3">
-              <label className="text-sm font-bold flex items-center gap-2 px-1">
-                <Clock size={16} /> Horário
-              </label>
-              <input
-                type="time"
-                value={selectedReminder.time || "08:00"}
-                onChange={(e) => setSelectedReminder({ ...selectedReminder, time: e.target.value })}
-                className="w-full bg-gray-100 border-none rounded-xl p-4 text-sm font-medium focus:ring-2 focus:ring-black"
-              />
-            </div>
-
-            {selectedReminder.repetitionType === 'every_x_hours' && (
-              <div className="space-y-3">
-                <label className="text-sm font-bold flex items-center gap-2 px-1">
-                  <Clock size={16} /> Intervalo
-                </label>
-                <div className="grid grid-cols-4 gap-2">
-                  {HOUR_OPTIONS.map(h => (
+              <div className="grid grid-cols-7 gap-1">
+                {DAYS_LABELS.map((day, idx) => {
+                  const isActive = (selectedReminder.daysOfWeek || []).includes(idx);
+                  return (
                     <button
-                      key={h}
-                      onClick={() => setSelectedReminder({ ...selectedReminder, intervalHours: h })}
-                      className={`py-3 rounded-xl text-xs font-bold transition-all ${
-                        selectedReminder.intervalHours === h ? "bg-black text-white" : "bg-gray-100 text-gray-500"
+                      key={day}
+                      type="button"
+                      onClick={() => toggleDay(idx)}
+                      className={`py-3 rounded-lg text-[11px] font-bold transition-all ${
+                        isActive ? "bg-black text-white" : "bg-gray-100 text-gray-500"
                       }`}
                     >
-                      {h}h
+                      {day}
                     </button>
-                  ))}
-                </div>
+                  );
+                })}
               </div>
-            )}
+              {(selectedReminder.daysOfWeek || []).length === 0 && (
+                <p className="text-xs text-red-500 px-1">Selecione pelo menos um dia.</p>
+              )}
+            </div>
 
-            {selectedReminder.repetitionType === 'specific_days' && (
+            {/* ── 2. FREQUÊNCIA ───────────────────────────────────────────── */}
+            <div className="space-y-3">
+              <label className="text-sm font-bold flex items-center gap-2 px-1">
+                <Clock size={16} /> Frequência
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSelectedReminder({ ...selectedReminder, repetitionType: "once_a_day" })
+                  }
+                  className={`py-4 px-3 rounded-xl text-sm font-bold transition-all border-2 ${
+                    !isEveryXHours
+                      ? "border-black bg-black text-white"
+                      : "border-gray-200 bg-gray-50 text-gray-600"
+                  }`}
+                >
+                  Uma vez por dia
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSelectedReminder({ ...selectedReminder, repetitionType: "every_x_hours" })
+                  }
+                  className={`py-4 px-3 rounded-xl text-sm font-bold transition-all border-2 ${
+                    isEveryXHours
+                      ? "border-black bg-black text-white"
+                      : "border-gray-200 bg-gray-50 text-gray-600"
+                  }`}
+                >
+                  A cada X horas
+                </button>
+              </div>
+            </div>
+
+            {/* ── 3. CONFIGURAÇÕES DA FREQUÊNCIA ──────────────────────────── */}
+
+            {/* Uma vez por dia → Horário */}
+            {!isEveryXHours && (
               <div className="space-y-3">
                 <label className="text-sm font-bold flex items-center gap-2 px-1">
-                  <Calendar size={16} /> Dias da Semana
+                  <Clock size={16} /> Horário
                 </label>
-                <div className="grid grid-cols-7 gap-1">
-                  {DAYS.map((day, idx) => {
-                    const daysOfWeek = selectedReminder.daysOfWeek || [];
-                    const isActive = daysOfWeek.includes(idx);
-                    return (
-                      <button
-                        key={day}
-                        onClick={() => {
-                          const newDays = isActive
-                            ? daysOfWeek.filter(d => d !== idx)
-                            : [...daysOfWeek, idx];
-                          setSelectedReminder({ ...selectedReminder, daysOfWeek: newDays });
-                        }}
-                        className={`py-3 rounded-lg text-[10px] font-bold transition-all ${
-                          isActive ? "bg-black text-white" : "bg-gray-100 text-gray-500"
-                        }`}
-                      >
-                        {day}
-                      </button>
-                    );
-                  })}
-                </div>
+                <input
+                  type="time"
+                  value={selectedReminder.time || "08:00"}
+                  onChange={(e) =>
+                    setSelectedReminder({ ...selectedReminder, time: e.target.value })
+                  }
+                  className="w-full bg-gray-100 border-none rounded-xl p-4 text-sm font-medium focus:ring-2 focus:ring-black"
+                />
               </div>
             )}
 
+            {/* A cada X horas → Intervalo + Hora inicial + Hora final */}
+            {isEveryXHours && (
+              <>
+                <div className="space-y-3">
+                  <label className="text-sm font-bold flex items-center gap-2 px-1">
+                    <Clock size={16} /> Intervalo
+                  </label>
+                  <div className="grid grid-cols-4 gap-2">
+                    {HOUR_OPTIONS.map((h) => (
+                      <button
+                        key={h}
+                        type="button"
+                        onClick={() =>
+                          setSelectedReminder({ ...selectedReminder, intervalHours: h })
+                        }
+                        className={`py-3 rounded-xl text-xs font-bold transition-all ${
+                          selectedReminder.intervalHours === h
+                            ? "bg-black text-white"
+                            : "bg-gray-100 text-gray-500"
+                        }`}
+                      >
+                        {h}h
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold px-1 block">Hora inicial</label>
+                    <input
+                      type="time"
+                      value={selectedReminder.timeStart || selectedReminder.time || "08:00"}
+                      onChange={(e) =>
+                        setSelectedReminder({ ...selectedReminder, timeStart: e.target.value })
+                      }
+                      className="w-full bg-gray-100 border-none rounded-xl p-4 text-sm font-medium focus:ring-2 focus:ring-black"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold px-1 block">Hora final</label>
+                    <input
+                      type="time"
+                      value={selectedReminder.timeEnd || "22:00"}
+                      onChange={(e) =>
+                        setSelectedReminder({ ...selectedReminder, timeEnd: e.target.value })
+                      }
+                      className="w-full bg-gray-100 border-none rounded-xl p-4 text-sm font-medium focus:ring-2 focus:ring-black"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* ── Som e Vibração ───────────────────────────────────────────── */}
             <div className="bg-gray-50 rounded-2xl p-4 space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -322,10 +443,19 @@ export default function Reminders() {
                   <span className="text-sm font-bold">Som</span>
                 </div>
                 <button
-                  onClick={() => setSelectedReminder({ ...selectedReminder, sound: !selectedReminder.sound })}
-                  className={`w-12 h-6 rounded-full transition-all relative ${selectedReminder.sound ? "bg-black" : "bg-gray-300"}`}
+                  type="button"
+                  onClick={() =>
+                    setSelectedReminder({ ...selectedReminder, sound: !selectedReminder.sound })
+                  }
+                  className={`w-12 h-6 rounded-full transition-all relative ${
+                    selectedReminder.sound ? "bg-black" : "bg-gray-300"
+                  }`}
                 >
-                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${selectedReminder.sound ? "right-1" : "left-1"}`} />
+                  <div
+                    className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${
+                      selectedReminder.sound ? "right-1" : "left-1"
+                    }`}
+                  />
                 </button>
               </div>
 
@@ -337,18 +467,32 @@ export default function Reminders() {
                   <span className="text-sm font-bold">Vibração</span>
                 </div>
                 <button
-                  onClick={() => setSelectedReminder({ ...selectedReminder, vibration: !selectedReminder.vibration })}
-                  className={`w-12 h-6 rounded-full transition-all relative ${selectedReminder.vibration ? "bg-black" : "bg-gray-300"}`}
+                  type="button"
+                  onClick={() =>
+                    setSelectedReminder({
+                      ...selectedReminder,
+                      vibration: !selectedReminder.vibration,
+                    })
+                  }
+                  className={`w-12 h-6 rounded-full transition-all relative ${
+                    selectedReminder.vibration ? "bg-black" : "bg-gray-300"
+                  }`}
                 >
-                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${selectedReminder.vibration ? "right-1" : "left-1"}`} />
+                  <div
+                    className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${
+                      selectedReminder.vibration ? "right-1" : "left-1"
+                    }`}
+                  />
                 </button>
               </div>
             </div>
           </div>
 
+          {/* ── Botão Salvar ──────────────────────────────────────────────── */}
           <button
             onClick={handleSave}
-            className="fixed bottom-24 left-6 right-6 bg-black text-white py-4 rounded-2xl font-bold shadow-xl flex items-center justify-center gap-2"
+            disabled={(selectedReminder.daysOfWeek || []).length === 0}
+            className="fixed bottom-24 left-6 right-6 bg-black text-white py-4 rounded-2xl font-bold shadow-xl flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             SALVAR CONFIGURAÇÃO
           </button>
@@ -357,6 +501,7 @@ export default function Reminders() {
     );
   }
 
+  // ── Lista de lembretes ─────────────────────────────────────────────────────
   return (
     <AppLayout>
       <div className="max-w-2xl mx-auto p-4 pb-24">
@@ -374,17 +519,17 @@ export default function Reminders() {
 
         <div className="flex bg-gray-100 p-1 rounded-2xl mb-8">
           <button
-            onClick={() => setSelectedProfile('basic')}
+            onClick={() => setSelectedProfile("basic")}
             className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all ${
-              selectedProfile === 'basic' ? "bg-white text-primary shadow-sm" : "text-gray-500"
+              selectedProfile === "basic" ? "bg-white text-primary shadow-sm" : "text-gray-500"
             }`}
           >
             BÁSICO
           </button>
           <button
-            onClick={() => setSelectedProfile('fitness')}
+            onClick={() => setSelectedProfile("fitness")}
             className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all ${
-              selectedProfile === 'fitness' ? "bg-white text-primary shadow-sm" : "text-gray-500"
+              selectedProfile === "fitness" ? "bg-white text-primary shadow-sm" : "text-gray-500"
             }`}
           >
             FITNESS
@@ -393,7 +538,7 @@ export default function Reminders() {
 
         <div className="grid gap-4">
           {filteredReminders.map((reminder) => {
-            const type = REMINDER_TYPES.find(t => t.id === reminder.id);
+            const type = REMINDER_TYPES.find((t) => t.id === reminder.id);
             if (!type) return null;
             const Icon = type.icon;
             return (
@@ -423,24 +568,30 @@ export default function Reminders() {
                     reminder.enabled ? "bg-primary" : "bg-gray-200"
                   }`}
                 >
-                  <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all shadow-sm ${
-                    reminder.enabled ? "left-7" : "left-1"
-                  }`} />
+                  <div
+                    className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all shadow-sm ${
+                      reminder.enabled ? "left-7" : "left-1"
+                    }`}
+                  />
                 </button>
               </div>
             );
           })}
         </div>
-        
+
         <div className="mt-8 bg-gradient-to-br from-indigo-50 to-purple-50 rounded-3xl p-6 border border-indigo-100/50">
           <div className="flex items-center gap-3 mb-4">
             <Sparkles className="text-indigo-600" size={20} />
             <h2 className="font-bold text-indigo-900">Sugestão da IA</h2>
           </div>
           <p className="text-sm text-indigo-700 leading-relaxed">
-            Com base no seu perfil de <span className="font-bold">{selectedProfile === 'basic' ? 'iniciante' : 'atleta'}</span>, 
-            recomendo ativar os lembretes de <span className="font-bold">água</span> e <span className="font-bold">proteína</span> para 
-            maximizar seus resultados nesta semana.
+            Com base no seu perfil de{" "}
+            <span className="font-bold">
+              {selectedProfile === "basic" ? "iniciante" : "atleta"}
+            </span>
+            , recomendo ativar os lembretes de{" "}
+            <span className="font-bold">água</span> e{" "}
+            <span className="font-bold">proteína</span> para maximizar seus resultados nesta semana.
           </p>
           <button className="mt-4 flex items-center gap-2 text-indigo-600 font-bold text-sm hover:gap-3 transition-all">
             Ver plano detalhado <ChevronRight size={16} />
