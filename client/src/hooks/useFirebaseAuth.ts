@@ -116,6 +116,7 @@ export function useFirebaseAuth() {
         setError(null);
       } catch (err) {
         console.error("Erro ao carregar/criar perfil no Firestore:", err);
+        setError("Erro ao carregar perfil. Verifique sua conexão e recarregue o app.");
       } finally {
         setLoading(false);
       }
@@ -138,6 +139,8 @@ export function useFirebaseAuth() {
       };
 
       await setDoc(doc(db, "users", result.user.uid), newProfile, { merge: true });
+      // Sincroniza o estado imediatamente, sem depender do onAuthStateChanged
+      setUser(result.user);
       setProfile(newProfile as any);
 
       // Sessão de backend é opcional — não bloqueia o cadastro
@@ -157,6 +160,8 @@ export function useFirebaseAuth() {
     try {
       setLoading(true);
       const result = await signInWithEmailAndPassword(auth, email, password);
+      // Sincroniza o estado imediatamente, sem depender do onAuthStateChanged
+      setUser(result.user);
 
       // Sessão de backend é opcional — não bloqueia o login
       void tryBackendSession(result.user);
@@ -184,7 +189,17 @@ export function useFirebaseAuth() {
   };
 
   const resetPassword = async (email: string) => {
-    await sendPasswordResetEmail(auth, email);
+    try {
+      setLoading(true);
+      setError(null);
+      await sendPasswordResetEmail(auth, email);
+    } catch (err) {
+      const errorMsg = translateFirebaseError(err);
+      setError(errorMsg);
+      throw new Error(errorMsg);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const updateProfile = async (updates: Partial<UserProfile>) => {

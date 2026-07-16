@@ -152,16 +152,31 @@ export default function Onboarding() {
     }
   }, [isAuthenticated, loading, navigate, profile]);
 
+  const validateStep1 = (): string | null => {
+    if (!form.name.trim()) return "Digite seu nome.";
+    const age = parseInt(form.age);
+    if (!form.age || isNaN(age) || age < 10 || age > 100) return "Digite uma idade válida (10–100 anos).";
+    const height = parseFloat(form.heightCm);
+    if (!form.heightCm || isNaN(height) || height < 50 || height > 300) return "Digite uma altura válida (50–300 cm).";
+    const weight = parseFloat(form.weightKg);
+    if (!form.weightKg || isNaN(weight) || weight < 20 || weight > 500) return "Digite um peso válido (20–500 kg).";
+    if (form.targetWeightKg) {
+      const tw = parseFloat(form.targetWeightKg);
+      if (isNaN(tw) || tw < 20 || tw > 500) return "Peso alvo inválido (20–500 kg).";
+    }
+    return null;
+  };
+
   const handleSubmit = async () => {
-    if (!form.name || !form.age || !form.heightCm || !form.weightKg) {
-      toast.error("Por favor, preencha todos os dados básicos.");
+    const step1Error = validateStep1();
+    if (step1Error) {
+      toast.error(step1Error);
       setStep(1);
       return;
     }
 
     const uid = auth.currentUser?.uid;
     if (!uid) {
-      
       toast.error("Erro de autenticação. Tente novamente.");
       return;
     }
@@ -293,7 +308,11 @@ export default function Onboarding() {
               </div>
             </div>
 
-            <button className="w-full bg-black text-white py-5 rounded-3xl font-bold shadow-xl flex items-center justify-center gap-2" onClick={() => { setStep(2); window.scrollTo(0, 0); }}>
+            <button className="w-full bg-black text-white py-5 rounded-3xl font-bold shadow-xl flex items-center justify-center gap-2" onClick={() => {
+              const err = validateStep1();
+              if (err) { toast.error(err); return; }
+              setStep(2); window.scrollTo(0, 0);
+            }}>
               PRÓXIMO PASSO <ChevronRight size={18} />
             </button>
           </div>

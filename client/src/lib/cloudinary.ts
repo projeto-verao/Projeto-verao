@@ -61,7 +61,13 @@ export const cloudinaryService = {
    * Converte uma Data URL (base64) para Blob e faz upload.
    */
   uploadFromDataUrl: async (dataUrl: string, folder?: string): Promise<string> => {
+    if (!dataUrl || !dataUrl.startsWith("data:")) {
+      throw new Error("URL de imagem inválida para upload.");
+    }
     const response = await fetch(dataUrl);
+    if (!response.ok) {
+      throw new Error("Falha ao converter imagem para upload.");
+    }
     const blob = await response.blob();
     return cloudinaryService.uploadImage(blob, folder);
   },

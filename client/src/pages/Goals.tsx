@@ -59,6 +59,25 @@ export default function Goals() {
 
   const handleSave = async () => {
     if (!user) return;
+
+    // Validações
+    if (form.currentWeightKg) {
+      const v = parseFloat(form.currentWeightKg);
+      if (isNaN(v) || v <= 0 || v > 500) { toast.error("Peso atual inválido (1–500 kg)."); return; }
+    }
+    if (form.targetWeightKg) {
+      const v = parseFloat(form.targetWeightKg);
+      if (isNaN(v) || v <= 0 || v > 500) { toast.error("Peso desejado inválido (1–500 kg)."); return; }
+    }
+    if (form.targetBodyFatPercent) {
+      const v = parseFloat(form.targetBodyFatPercent);
+      if (isNaN(v) || v < 1 || v > 60) { toast.error("% de gordura inválido (1–60%)."); return; }
+    }
+    if (form.weeklyGoalKg) {
+      const v = parseFloat(form.weeklyGoalKg);
+      if (isNaN(v) || v <= 0 || v > 5) { toast.error("Meta semanal inválida (máx 5 kg/semana)."); return; }
+    }
+
     setSaving(true);
     try {
       await firestoreService.saveGoals(user.uid, {

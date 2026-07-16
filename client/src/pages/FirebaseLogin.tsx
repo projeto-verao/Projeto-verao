@@ -7,6 +7,8 @@ import { Dumbbell, Mail, Lock, User, ArrowLeft, Eye, EyeOff, CheckCircle } from 
 
 type Mode = "login" | "signup" | "forgot";
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export default function FirebaseLogin() {
   const [, navigate] = useLocation();
   const { login, register, resetPassword, loading } = useFirebaseAuth();
@@ -19,12 +21,23 @@ export default function FirebaseLogin() {
   const [showPassword, setShowPassword] = useState(false);
   const [resetSent, setResetSent] = useState(false);
 
+  const changeMode = (next: Mode) => {
+    setMode(next);
+    setPassword("");
+    setConfirmPassword("");
+    setShowPassword(false);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (mode === "forgot") {
       if (!email.trim()) {
         toast.error("Digite seu e-mail para recuperar a senha.");
+        return;
+      }
+      if (!EMAIL_REGEX.test(email.trim())) {
+        toast.error("Digite um e-mail válido.");
         return;
       }
       try {
@@ -37,8 +50,16 @@ export default function FirebaseLogin() {
       return;
     }
 
-    if (!email.trim() || !password) {
-      toast.error("Preencha e-mail e senha.");
+    if (!email.trim()) {
+      toast.error("Digite seu e-mail.");
+      return;
+    }
+    if (!EMAIL_REGEX.test(email.trim())) {
+      toast.error("Digite um e-mail válido.");
+      return;
+    }
+    if (!password) {
+      toast.error("Digite sua senha.");
       return;
     }
 
@@ -108,7 +129,7 @@ export default function FirebaseLogin() {
       {(mode === "forgot" || mode === "signup") && (
         <div className="px-5 pt-12 pb-2">
           <button
-            onClick={() => setMode("login")}
+            onClick={() => changeMode("login")}
             className="flex items-center gap-2 text-gray-500 hover:text-gray-900 transition-colors text-sm"
           >
             <ArrowLeft size={18} />
@@ -229,7 +250,7 @@ export default function FirebaseLogin() {
               <div className="text-right">
                 <button
                   type="button"
-                  onClick={() => setMode("forgot")}
+                  onClick={() => changeMode("forgot")}
                   className="text-sm text-gray-500 hover:text-black transition-colors"
                 >
                   Esqueci minha senha
@@ -259,7 +280,7 @@ export default function FirebaseLogin() {
               {mode === "login" ? "Não tem uma conta?" : "Já tem uma conta?"}{" "}
               <button
                 type="button"
-                onClick={() => setMode(mode === "login" ? "signup" : "login")}
+                onClick={() => changeMode(mode === "login" ? "signup" : "login")}
                 className="text-black font-semibold hover:underline"
                 disabled={loading}
               >
