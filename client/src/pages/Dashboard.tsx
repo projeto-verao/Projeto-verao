@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { isOnboardingComplete } from "@/hooks/useFirebaseAuth";
 import AppLayout from "@/components/AppLayout";
 import { geminiService } from "@/lib/gemini";
-import { firestoreService, dateHelpers, StoredWorkout, ExerciseLoadEntry, WorkoutCompletionEntry } from "@/hooks/useFirebaseFirestore";
+import { firestoreService, dateHelpers, StoredWorkout, ExerciseLoadEntry, WorkoutCompletionEntry, ExerciseWeightEntry } from "@/hooks/useFirebaseFirestore";
 import {
   Utensils, Target, RefreshCw, Loader2, ChevronRight, Timer, X, Sparkles, Activity, Trash2, CheckCircle2, Play, Trophy, Info, Weight, AlertTriangle, TrendingDown, Award, AlertCircle, Home
 } from "lucide-react";
@@ -12,6 +12,21 @@ import { toast } from "sonner";
 import { Timestamp, collection, getDocs, query, orderBy, limit } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import VideoModal from "@/components/VideoModal";
+
+/** Extrai o valor numérico (kg) de uma string de peso gerada pela IA.
+ *  Ex: "30-50kg" → 30  |  "20kg" → 20  |  "Corporal" → null */
+function parseWeightSuggestion(weightStr: string): number | null {
+  if (!weightStr) return null;
+  const lower = weightStr.toLowerCase();
+  if (lower.includes("corporal") || lower.includes("livre") || lower.includes("bw")) return null;
+  // Faixa de valores → pega o menor (mais conservador para iniciantes)
+  const rangeMatch = weightStr.match(/(\d+(?:[.,]\d+)?)\s*[-–]\s*\d+(?:[.,]\d+)?\s*kg?/i);
+  if (rangeMatch) return parseFloat(rangeMatch[1].replace(",", "."));
+  // Valor único
+  const singleMatch = weightStr.match(/(\d+(?:[.,]\d+)?)\s*kg?/i);
+  if (singleMatch) return parseFloat(singleMatch[1].replace(",", "."));
+  return null;
+}
 
 export default function Dashboard() {
   const { user, profile, isAuthenticated, loading: authLoading } = useAuth();
@@ -222,10 +237,11 @@ export default function Dashboard() {
     if (!user) return;
     setWorkoutLoading(true);
     try {
-      const [workout, completions, lastLoads] = await Promise.all([
+      const [workout, completions, lastLoads, exerciseWeightMap] = await Promise.all([
         firestoreService.getActiveWorkout(user.uid),
         firestoreService.getWeekCompletions(user.uid),
         firestoreService.getLastExerciseLoads(user.uid),
+        firestoreService.getExerciseWeights(user.uid),
       ]);
       setActiveWorkout(workout);
       setWeekCompleted(completions.length);
@@ -240,12 +256,35 @@ export default function Dashboard() {
       completions.forEach((c: WorkoutCompletionEntry) => daysSet.add(c.day));
       setCompletedDaysSet(daysSet);
 
-      // Preencher cargas sugeridas (histórico)
-      const suggestedLoads: Record<string, string> = {};
+      // ── Construir cargas iniciais por prioridade ────────────────────────────
+      // 1. Sugestão da IA (menor — só para exercícios sem nenhum histórico)
+      // 2. Histórico de conclusões anteriores (getLastExerciseLoads)
+      // 3. Coleção dedicada exerciseWeights (maior — valor explicitamente salvo)
+      const initialLoads: Record<string, string> = {};
+
+      // 1. Sugestão da IA: parsear o campo weight de cada exercício do treino ativo
+      if (workout) {
+        workout.days.forEach(day => {
+          day.exercises.forEach(ex => {
+            const suggested = parseWeightSuggestion(ex.weight);
+            if (suggested !== null && suggested > 0) {
+              initialLoads[ex.name.toLowerCase()] = suggested.toString();
+            }
+          });
+        });
+      }
+
+      // 2. Histórico de completions (sobrepõe sugestão da IA)
       Object.entries(lastLoads).forEach(([name, load]) => {
-        suggestedLoads[name] = load.toString();
+        initialLoads[name] = load.toString();
       });
-      setExerciseLoads(prev => ({ ...suggestedLoads, ...prev }));
+
+      // 3. Pesos salvos explicitamente pelo usuário (sempre prevalece)
+      Object.values(exerciseWeightMap).forEach((entry: ExerciseWeightEntry) => {
+        initialLoads[entry.exerciseName.toLowerCase()] = entry.loadKg.toString();
+      });
+
+      setExerciseLoads(initialLoads);
 
       // Recuperar estado do cronômetro do localStorage
       const savedStartTime = localStorage.getItem(`workout_start_${user.uid}`);
@@ -531,6 +570,10 @@ export default function Dashboard() {
         workoutTitle: day.title || "Treino",
         exerciseLoads: loads
       });
+
+      // Persistir cargas individuais na coleção dedicada (garante que o próximo
+      // treino abra com os valores corretos mesmo sem nova completion)
+      await firestoreService.saveAllExerciseWeights(user.uid, loads);
 
       // Limpar estado do cronômetro
       setIsTraining(false);
@@ -1106,6 +1149,12 @@ export default function Dashboard() {
                                 placeholder="0"
                                 value={exerciseLoads[ex.name.toLowerCase()] || ""}
                                 onChange={(e) => setExerciseLoads(prev => ({ ...prev, [ex.name.toLowerCase()]: e.target.value }))}
+                                onBlur={(e) => {
+                                  const val = parseFloat(e.target.value);
+                                  if (user && !isNaN(val) && val > 0) {
+                                    firestoreService.saveExerciseWeight(user.uid, ex.name, val);
+                                  }
+                                }}
                                 disabled={!isTraining}
                                 className="bg-transparent border-none p-0 text-sm font-black text-gray-900 focus:ring-0 w-16"
                               />

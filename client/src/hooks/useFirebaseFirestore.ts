@@ -69,6 +69,14 @@ export interface ExerciseLoadEntry {
   loadKg: number;
 }
 
+/** Carga persistida por exercício — fonte de verdade entre sessões. */
+export interface ExerciseWeightEntry {
+  exerciseName: string;
+  loadKg: number;
+  previousLoadKg?: number; // carga anterior — estrutura pronta para evolução futura
+  updatedAt: Timestamp;
+}
+
 export interface ExerciseVideo {
   id: string; // exerciseName slug
   exerciseName: string;
@@ -309,6 +317,74 @@ export const firestoreService = {
       }
     });
     return loads;
+  },
+
+  // ── Exercise Weights (cargas persistidas por exercício) ────────────────────
+
+  /**
+   * Retorna todas as cargas salvas pelo usuário, indexadas pelo slug do nome
+   * do exercício (lowercase, espaços → hífens).
+   */
+  async getExerciseWeights(userId: string): Promise<Record<string, ExerciseWeightEntry>> {
+    const q = query(userCol(userId, "exerciseWeights"), fsLimit(300));
+    const snap = await getDocs(q);
+    const result: Record<string, ExerciseWeightEntry> = {};
+    snap.docs.forEach(d => {
+      result[d.id] = d.data() as ExerciseWeightEntry;
+    });
+    return result;
+  },
+
+  /**
+   * Salva (ou atualiza) a carga de um exercício.
+   * Preserva a carga anterior em `previousLoadKg` para permitir acompanhar
+   * a evolução futura sem perder o histórico.
+   */
+  async saveExerciseWeight(userId: string, exerciseName: string, loadKg: number): Promise<void> {
+    const key = exerciseName.toLowerCase().trim().replace(/\s+/g, "-");
+    const ref = doc(db, "users", userId, "exerciseWeights", key);
+    const existing = await getDoc(ref);
+    const currentLoad = existing.exists()
+      ? (existing.data() as ExerciseWeightEntry).loadKg
+      : undefined;
+    const currentPrev = existing.exists()
+      ? (existing.data() as ExerciseWeightEntry).previousLoadKg
+      : undefined;
+    await setDoc(ref, {
+      exerciseName,
+      loadKg,
+      // Só atualiza previousLoadKg se o valor mudou
+      previousLoadKg: currentLoad !== undefined && currentLoad !== loadKg ? currentLoad : currentPrev,
+      updatedAt: Timestamp.now(),
+    });
+  },
+
+  /**
+   * Salva em lote as cargas de uma lista de exercícios.
+   * Ignora entradas com loadKg = 0.
+   */
+  async saveAllExerciseWeights(userId: string, loads: ExerciseLoadEntry[]): Promise<void> {
+    await Promise.all(
+      loads
+        .filter(l => l.loadKg > 0)
+        .map(async l => {
+          const key = l.exerciseName.toLowerCase().trim().replace(/\s+/g, "-");
+          const ref = doc(db, "users", userId, "exerciseWeights", key);
+          const existing = await getDoc(ref);
+          const currentLoad = existing.exists()
+            ? (existing.data() as ExerciseWeightEntry).loadKg
+            : undefined;
+          const currentPrev = existing.exists()
+            ? (existing.data() as ExerciseWeightEntry).previousLoadKg
+            : undefined;
+          await setDoc(ref, {
+            exerciseName: l.exerciseName,
+            loadKg: l.loadKg,
+            previousLoadKg: currentLoad !== undefined && currentLoad !== l.loadKg ? currentLoad : currentPrev,
+            updatedAt: Timestamp.now(),
+          });
+        })
+    );
   },
 
   // ── Exercise Video Library ──────────────────────────────────────────────────
