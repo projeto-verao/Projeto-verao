@@ -181,10 +181,10 @@ export default function Processing() {
             Tentar Novamente
           </button>
           <button
-            onClick={() => navigate("/onboarding")}
+            onClick={() => navigate("/dashboard")}
             className="px-6 py-2 border border-white text-white rounded-lg font-semibold hover:bg-white hover:text-black transition"
           >
-            Voltar
+            Ir para o Dashboard
           </button>
         </div>
       </div>
