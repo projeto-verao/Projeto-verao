@@ -125,21 +125,45 @@ function setupForegroundMessaging() {
 // ─── Service Worker Registration ────────────────────────────────────────────
 
 if ('serviceWorker' in navigator) {
-  // ─── Detecção de novo SW (sem reload automático) ────────────────────────────
-  // IMPORTANTE: NÃO fazemos window.location.reload() aqui.
+  // ─── Reload inteligente quando novo SW assume o controle ────────────────────
+  // Problema original: reload imediato no controllerchange interrompia
+  // createUserWithEmailAndPassword() em andamento no PWA instalado, pois o
+  // PWA abre com SW antigo → novo SW ativa imediatamente → reload → cadastro abortado.
   //
-  // O problema: o PWA instalado abre com o SW antigo ainda no controle.
-  // skipWaiting() + clients.claim() ativam o novo SW imediatamente, disparando
-  // controllerchange durante a sessão do usuário. Um reload() neste momento
-  // aborta operações em andamento — como createUserWithEmailAndPassword() —
-  // causando falha no cadastro. No browser normal esse reload é inofensivo
-  // porque o SW já estava atualizado antes do usuário interagir.
+  // Problema do "sem reload": sem recarregar, o JS antigo em memória pode
+  // tentar importar sub-chunks com hashes antigos que o servidor não serve
+  // mais, causando ChunkLoadError → crash do React (NotFoundError: removeChild).
   //
-  // Solução: deixar o SW network-first (navegação) garantir conteúdo fresco
-  // naturalmente. O novo SW já está ativo via clients.claim(); na próxima
-  // navegação do usuário ele receberá o JS atualizado sem interrupção.
+  // Solução: reload com guarda — só recarrega se nenhum formulário está sendo
+  // submetido (detectado via button[disabled]). Se o usuário está no meio do
+  // cadastro, o reload é abortado; o SW network-first garante conteúdo fresco
+  // na próxima navegação natural.
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    console.log('[SW] Novo service worker ativo — conteúdo atualizado disponível.');
+    console.log('[SW] Novo service worker ativo — verificando se é seguro recarregar...');
+    const hasActiveSubmit = !!document.querySelector('button[disabled]');
+    if (hasActiveSubmit) {
+      console.log('[SW] Operação em andamento detectada — reload adiado. Conteúdo fresco na próxima navegação.');
+      return;
+    }
+    console.log('[SW] Recarregando para nova versão...');
+    window.location.reload();
+  });
+
+  // ─── Recuperação de chunk desatualizado ──────────────────────────────────────
+  // Após um deploy, sub-chunks com hashes antigos deixam de existir no servidor.
+  // Se o app detecta importação dinâmica falhando (ChunkLoadError), recarrega
+  // uma vez para obter a versão correta — evita crash do React 19.
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason = event.reason;
+    const isChunkError =
+      reason?.name === 'ChunkLoadError' ||
+      reason?.message?.includes('Failed to fetch dynamically imported module') ||
+      reason?.message?.includes('Unable to preload CSS for') ||
+      reason?.message?.includes('Loading chunk');
+    if (isChunkError) {
+      console.warn('[SW] Chunk desatualizado detectado — recarregando para nova versão:', reason?.message);
+      window.location.reload();
+    }
   });
 
   window.addEventListener('load', async () => {
