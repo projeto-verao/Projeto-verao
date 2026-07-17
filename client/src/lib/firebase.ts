@@ -3,7 +3,6 @@ import { getAuth } from "firebase/auth";
 import {
   initializeFirestore,
   persistentLocalCache,
-  persistentMultipleTabManager,
   memoryLocalCache,
 } from "firebase/firestore";
 // import { getStorage } from "firebase/storage"; // Removido: migrado para Cloudinary
@@ -24,36 +23,30 @@ const app = initializeApp(firebaseConfig);
 // Initialize Firebase services
 export const auth = getAuth(app);
 
-// Initialize Firestore com persistência offline.
-// persistentMultipleTabManager() pode falhar em alguns ambientes móveis
-// (modo privado, PWA restrito, IndexedDB bloqueado, Android antigo).
-// Se falhar, usa memoryLocalCache como fallback seguro para garantir
-// que o cadastro e login funcionem em qualquer dispositivo.
+// Initialize Firestore com persistência offline (single-tab).
+//
+// Por que NÃO usamos persistentMultipleTabManager():
+// O PWA instalado roda em processo isolado do Chrome (standalone mode).
+// A coordenação multi-tab via IndexedDB locking pode falhar nesse contexto,
+// causando erro assíncrono na primeira operação Firestore (ex: setDoc no
+// cadastro) mesmo quando initializeFirestore() não lança exceção síncrona.
+//
+// persistentLocalCache() sem tabManager usa single-tab manager por padrão,
+// que é mais compatível e adequado para PWA (sempre uma única janela).
+// Fallback: memoryLocalCache() para ambientes sem IndexedDB (modo privado, etc).
 function initDb() {
   try {
     return initializeFirestore(app, {
-      localCache: persistentLocalCache({
-        tabManager: persistentMultipleTabManager(),
-      }),
+      localCache: persistentLocalCache(),
     });
   } catch (e) {
     console.warn(
-      "[Firebase] Persistência multi-tab indisponível, usando cache em memória:",
+      "[Firebase] Persistência IndexedDB indisponível, usando cache em memória:",
       e
     );
-    try {
-      return initializeFirestore(app, {
-        localCache: persistentLocalCache(),
-      });
-    } catch (e2) {
-      console.warn(
-        "[Firebase] Persistência local indisponível, usando cache em memória:",
-        e2
-      );
-      return initializeFirestore(app, {
-        localCache: memoryLocalCache(),
-      });
-    }
+    return initializeFirestore(app, {
+      localCache: memoryLocalCache(),
+    });
   }
 }
 

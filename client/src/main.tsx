@@ -125,13 +125,21 @@ function setupForegroundMessaging() {
 // ─── Service Worker Registration ────────────────────────────────────────────
 
 if ('serviceWorker' in navigator) {
-  // ─── Reload automático quando novo SW assume o controle ─────────────────────
-  // Quando um novo sw.js é detectado e assume via skipWaiting()/clients.claim(),
-  // o evento 'controllerchange' dispara. Recarregar garante que o usuário
-  // veja imediatamente a nova versão em vez de continuar com assets velhos.
+  // ─── Detecção de novo SW (sem reload automático) ────────────────────────────
+  // IMPORTANTE: NÃO fazemos window.location.reload() aqui.
+  //
+  // O problema: o PWA instalado abre com o SW antigo ainda no controle.
+  // skipWaiting() + clients.claim() ativam o novo SW imediatamente, disparando
+  // controllerchange durante a sessão do usuário. Um reload() neste momento
+  // aborta operações em andamento — como createUserWithEmailAndPassword() —
+  // causando falha no cadastro. No browser normal esse reload é inofensivo
+  // porque o SW já estava atualizado antes do usuário interagir.
+  //
+  // Solução: deixar o SW network-first (navegação) garantir conteúdo fresco
+  // naturalmente. O novo SW já está ativo via clients.claim(); na próxima
+  // navegação do usuário ele receberá o JS atualizado sem interrupção.
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    console.log('[SW] Novo service worker ativo — recarregando para nova versão...');
-    window.location.reload();
+    console.log('[SW] Novo service worker ativo — conteúdo atualizado disponível.');
   });
 
   window.addEventListener('load', async () => {
