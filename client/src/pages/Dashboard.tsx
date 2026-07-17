@@ -6,7 +6,7 @@ import AppLayout from "@/components/AppLayout";
 import { geminiService } from "@/lib/gemini";
 import { firestoreService, dateHelpers, StoredWorkout, ExerciseLoadEntry, WorkoutCompletionEntry, ExerciseWeightEntry } from "@/hooks/useFirebaseFirestore";
 import {
-  Utensils, Target, RefreshCw, Loader2, ChevronRight, Timer, X, Sparkles, Activity, Trash2, CheckCircle2, Play, Trophy, Info, Weight, AlertTriangle, TrendingDown, Award, AlertCircle, Home
+  Utensils, Target, RefreshCw, Loader2, ChevronRight, Timer, X, Sparkles, Activity, CheckCircle2, Play, Trophy, Info, Weight, AlertTriangle, TrendingDown, Award, AlertCircle, Home
 } from "lucide-react";
 import { toast } from "sonner";
 import { Timestamp, collection, getDocs, query, orderBy, limit } from "firebase/firestore";
@@ -56,7 +56,6 @@ export default function Dashboard() {
   const [weekCompletions, setWeekCompletions] = useState<WorkoutCompletionEntry[]>([]);
   // userWeekNumber: semana individual do usuário (calculada pela data do primeiro treino)
   const [userWeekNumber, setUserWeekNumber] = useState<number>(1);
-  const [confirmDelete, setConfirmDelete] = useState(false);
   
   // ── Estados do Cronômetro de Treino ────────────────────────────────────────
   const [isTraining, setIsTraining] = useState(false);
@@ -387,21 +386,6 @@ export default function Dashboard() {
     }
   };
 
-  // ── Excluir treino ativo ───────────────────────────────────────────────────
-  const handleDeleteWorkout = async () => {
-    if (!user || !activeWorkout) return;
-    try {
-      await firestoreService.deleteWorkout(user.uid, activeWorkout.id);
-      toast.success("Treino excluído.");
-      setConfirmDelete(false);
-      setCompletedSets({});
-      setSelectedDay(null);
-      await loadData();
-    } catch (err) {
-      console.error("Erro ao excluir treino:", err);
-      toast.error("Erro ao excluir treino. Tente novamente.");
-    }
-  };
 
   // ── Mapeamento de exercícios para grupos musculares ────────────────────────
   const getExerciseMuscleGroup = (exerciseName: string): string => {
@@ -881,33 +865,6 @@ export default function Dashboard() {
         );
       })()}
 
-      {/* Delete Confirmation Modal */}
-      {confirmDelete && (
-        <div className="fixed inset-0 z-[120] bg-black/80 flex items-center justify-center p-6 backdrop-blur-sm">
-          <div className="bg-white rounded-[40px] p-8 w-full max-w-sm text-center animate-in zoom-in-95 duration-300">
-            <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <Trash2 size={32} className="text-red-500" />
-            </div>
-            <h3 className="font-black text-gray-900 text-xl mb-2">EXCLUIR TREINO?</h3>
-            <p className="text-gray-500 text-sm mb-8">Essa ação não pode ser desfeita. Você terá que gerar um novo treino com a IA.</p>
-            
-            <div className="flex gap-3">
-              <button
-                onClick={() => setConfirmDelete(false)}
-                className="flex-1 bg-gray-100 text-gray-500 py-4 rounded-2xl font-bold active:scale-95 transition-all"
-              >
-                CANCELAR
-              </button>
-              <button
-                onClick={handleDeleteWorkout}
-                className="flex-1 bg-red-500 text-white py-4 rounded-2xl font-bold shadow-lg shadow-red-200 active:scale-95 transition-all"
-              >
-                EXCLUIR
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Home Workout Confirmation Modal */}
       {showHomeConfirm && pendingHomeDayNumber !== null && (
@@ -1030,22 +987,6 @@ export default function Dashboard() {
               <div>
                 <h2 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Sua Planilha</h2>
                 <p className="text-sm font-black text-gray-900">{activeWorkout?.title}</p>
-              </div>
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={handleGenerateWorkout}
-                  disabled={generating}
-                  className="text-[10px] font-bold text-orange-500 uppercase tracking-widest flex items-center gap-1 disabled:opacity-50"
-                >
-                  {generating ? <Loader2 size={10} className="animate-spin" /> : <RefreshCw size={10} />}
-                  {generating ? "Gerando..." : "Regenerar"}
-                </button>
-                <button
-                  onClick={() => setConfirmDelete(true)}
-                  className="text-[10px] font-bold text-red-400 uppercase tracking-widest flex items-center gap-1"
-                >
-                  <Trash2 size={10} /> Excluir
-                </button>
               </div>
             </div>
 
