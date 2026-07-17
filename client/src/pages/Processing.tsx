@@ -40,6 +40,7 @@ export default function Processing() {
 
   const runGeneration = async () => {
     if (!user) return;
+    console.log("[Processing] runGeneration iniciado — uid:", user.uid, "profile:", !!profile);
     try {
       // 1. Análise corporal opcional via foto de avaliação
       let bodyAnalysisSummary: string | undefined;
@@ -47,48 +48,57 @@ export default function Processing() {
       // Tentar obter a foto de avaliação do perfil (Cloudinary)
       let evalPhotoBase64: string | undefined;
       const evalPhotoUrl = (profile as any)?.evalPhotoUrl;
+      console.log("[Processing] evalPhotoUrl:", evalPhotoUrl || "(sem foto)");
       if (evalPhotoUrl) {
         try {
           evalPhotoBase64 = await fetchImageAsBase64(evalPhotoUrl);
+          console.log("[Processing] foto carregada como base64 OK");
         } catch (e) {
-          console.warn("Falha ao baixar foto de avaliação:", e);
+          console.warn("[Processing] Falha ao baixar foto de avaliação:", e);
         }
       }
 
       if (evalPhotoBase64) {
         try {
+          console.log("[Processing] Iniciando análise corporal com Gemini...");
           const analysis = await geminiService.analyzeBody(evalPhotoBase64, profile as any);
           bodyAnalysisSummary = `Gordura corporal estimada: ${analysis.bfEstimate}. Nível muscular: ${analysis.muscleLevel}. ${analysis.summary}`;
+          console.log("[Processing] Análise corporal OK:", bodyAnalysisSummary.substring(0, 80));
           // Salvar análise como primeiro registro de progresso corporal
           await firestoreService.addBodyProgress(user.uid, {
             weightKg: (profile as any)?.weightKg,
             notes: `Avaliação inicial IA — ${bodyAnalysisSummary}`,
           });
+          console.log("[Processing] bodyProgress salvo no Firestore OK");
         } catch (e) {
-          console.warn("Análise corporal falhou, seguindo sem ela:", e);
+          console.warn("[Processing] Análise corporal falhou, seguindo sem ela:", e);
         }
       }
 
       setProgress((p) => Math.max(p, 45));
 
       // 2. Gerar treino personalizado
+      console.log("[Processing] Chamando geminiService.generateWorkout...");
       const generated = await geminiService.generateWorkout(profile as any, bodyAnalysisSummary);
+      console.log("[Processing] Treino gerado pela IA OK — título:", generated.title, "| dias:", generated.days?.length);
 
       setProgress((p) => Math.max(p, 80));
 
       // 3. Salvar no Firestore
-      await firestoreService.createWorkout(user.uid, {
+      console.log("[Processing] Salvando treino no Firestore...");
+      const workoutId = await firestoreService.createWorkout(user.uid, {
         title: generated.title,
         days: generated.days,
         changeDescription: bodyAnalysisSummary
           ? "Primeiro treino gerado pela IA com avaliação física por foto"
           : "Primeiro treino gerado pela IA",
       });
+      console.log("[Processing] Treino salvo no Firestore OK — id:", workoutId);
 
       setProgress(100);
       setTimeout(() => navigate("/dashboard"), 800);
     } catch (err) {
-      console.error("Erro ao gerar treino:", err);
+      console.error("[Processing] Erro ao gerar treino:", err);
       const msg = err instanceof Error ? err.message : "Não conseguimos gerar seu treino agora. Por favor, tente novamente.";
       setError(msg);
     }
@@ -96,6 +106,7 @@ export default function Processing() {
 
   // Inicia a geração do treino uma única vez (aguarda auth e perfil carregarem)
   useEffect(() => {
+    console.log("[Processing] useEffect — authLoading:", authLoading, "| user:", !!user, "| profile:", !!profile, "| hasStarted:", hasStarted.current);
     if (authLoading || !user || hasStarted.current) return;
     if (!profile) return; // aguarda perfil carregar
     hasStarted.current = true;

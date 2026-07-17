@@ -235,14 +235,26 @@ export default function Dashboard() {
 
   const loadData = useCallback(async () => {
     if (!user) return;
+    console.log("[Dashboard] loadData iniciado — uid:", user.uid);
     setWorkoutLoading(true);
     try {
-      const [workout, completions, lastLoads, exerciseWeightMap] = await Promise.all([
+      // getExerciseWeights usa a subcoleção exerciseWeights — separado para não
+      // bloquear o carregamento do treino caso a permissão falhe.
+      const [workout, completions, lastLoads] = await Promise.all([
         firestoreService.getActiveWorkout(user.uid),
         firestoreService.getWeekCompletions(user.uid),
         firestoreService.getLastExerciseLoads(user.uid),
-        firestoreService.getExerciseWeights(user.uid),
       ]);
+      console.log("[Dashboard] dados principais OK — treino ativo:", workout?.id ?? "nenhum", "| completions:", completions.length);
+
+      let exerciseWeightMap: Record<string, import("@/hooks/useFirebaseFirestore").ExerciseWeightEntry> = {};
+      try {
+        exerciseWeightMap = await firestoreService.getExerciseWeights(user.uid);
+        console.log("[Dashboard] exerciseWeights OK — entradas:", Object.keys(exerciseWeightMap).length);
+      } catch (weightErr) {
+        console.warn("[Dashboard] getExerciseWeights falhou (permissão Firestore?) — seguindo sem cargas salvas:", weightErr);
+      }
+
       setActiveWorkout(workout);
       setWeekCompleted(completions.length);
       setWeekCompletions(completions);
