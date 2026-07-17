@@ -46,69 +46,90 @@ async function callGemini(
     body.generationConfig = { responseMimeType: "application/json" };
   }
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
+  // Retry com exponential backoff para erros transitórios do Gemini (503 = high demand).
+  // Tentativas: imediata → +1s → +2s → +4s (total: 4 tentativas, máx ~7s de espera extra).
+  const MAX_RETRIES = 3;
 
-  try {
-    const res = await fetch(
-      `${GEMINI_BASE}/${MODEL}:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      }
-    );
-    clearTimeout(timeoutId);
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      const delayMs = Math.pow(2, attempt - 1) * 1000; // 1000, 2000, 4000
+      console.warn(`[Gemini] Aguardando ${delayMs}ms antes da tentativa ${attempt + 1}/${MAX_RETRIES + 1}...`);
+      await new Promise<void>(resolve => setTimeout(resolve, delayMs));
+    }
 
-    if (!res.ok) {
-      const errText = await res.text();
-      // Tenta extrair a mensagem detalhada retornada pela API do Gemini
-      // (em vez de expor apenas o status HTTP genérico).
-      let apiMessage: string | undefined;
-      try {
-        const errJson = JSON.parse(errText);
-        apiMessage = errJson?.error?.message;
-      } catch {
-        // corpo não era JSON, mantém errText bruto no log
-      }
-      console.error(
-        `[Gemini] Erro HTTP ${res.status}${apiMessage ? ` — ${apiMessage}` : ""}`,
-        errText
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s por tentativa
+
+    try {
+      const res = await fetch(
+        `${GEMINI_BASE}/${MODEL}:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        }
       );
-      if (res.status === 429) {
-        throw new Error("Limite de uso da IA atingido. Aguarde alguns minutos e tente novamente.");
-      }
-      if (res.status === 400 && apiMessage?.toLowerCase().includes("api key")) {
+      clearTimeout(timeoutId);
+
+      if (!res.ok) {
+        const errText = await res.text();
+        // Tenta extrair a mensagem detalhada retornada pela API do Gemini
+        // (em vez de expor apenas o status HTTP genérico).
+        let apiMessage: string | undefined;
+        try {
+          const errJson = JSON.parse(errText);
+          apiMessage = errJson?.error?.message;
+        } catch {
+          // corpo não era JSON, mantém errText bruto no log
+        }
+        console.error(
+          `[Gemini] Erro HTTP ${res.status}${apiMessage ? ` — ${apiMessage}` : ""} (tentativa ${attempt + 1}/${MAX_RETRIES + 1})`,
+          errText
+        );
+
+        // 503: servidor do Gemini sobrecarregado — erro transitório, tentar novamente.
+        if (res.status === 503 && attempt < MAX_RETRIES) {
+          continue;
+        }
+
+        if (res.status === 429) {
+          throw new Error("Limite de uso da IA atingido. Aguarde alguns minutos e tente novamente.");
+        }
+        if (res.status === 400 && apiMessage?.toLowerCase().includes("api key")) {
+          throw new Error(
+            "A chave da API Gemini configurada é inválida. Verifique a variável VITE_GEMINI_API_KEY."
+          );
+        }
         throw new Error(
-          "A chave da API Gemini configurada é inválida. Verifique a variável VITE_GEMINI_API_KEY."
+          apiMessage
+            ? `Erro na IA (HTTP ${res.status}): ${apiMessage}`
+            : `Erro na IA (HTTP ${res.status}). Tente novamente.`
         );
       }
-      throw new Error(
-        apiMessage
-          ? `Erro na IA (HTTP ${res.status}): ${apiMessage}`
-          : `Erro na IA (HTTP ${res.status}). Tente novamente.`
-      );
-    }
 
-    const data = await res.json();
-    const text: string | undefined =
-      data?.candidates?.[0]?.content?.parts
-        ?.map((p: GeminiPart) => p.text ?? "")
-        .join("") ?? undefined;
+      const data = await res.json();
+      const text: string | undefined =
+        data?.candidates?.[0]?.content?.parts
+          ?.map((p: GeminiPart) => p.text ?? "")
+          .join("") ?? undefined;
 
-    if (!text) {
-      console.error("[Gemini] Resposta sem texto:", JSON.stringify(data).slice(0, 500));
-      throw new Error("A IA não retornou uma resposta válida. Tente novamente.");
+      if (!text) {
+        console.error("[Gemini] Resposta sem texto:", JSON.stringify(data).slice(0, 500));
+        throw new Error("A IA não retornou uma resposta válida. Tente novamente.");
+      }
+      return text;
+    } catch (error: any) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        throw new Error("A análise demorou mais do que o esperado. Verifique sua conexão ou tente novamente.");
+      }
+      throw error;
     }
-    return text;
-  } catch (error: any) {
-    clearTimeout(timeoutId);
-    if (error.name === 'AbortError') {
-      throw new Error("A análise demorou mais do que o esperado. Verifique sua conexão ou tente novamente.");
-    }
-    throw error;
   }
+
+  // Segurança: nunca deve chegar aqui (o loop sempre retorna ou lança antes).
+  throw new Error("Erro na IA após múltiplas tentativas. Tente novamente.");
 }
 
 function extractJson(text: string): any {
