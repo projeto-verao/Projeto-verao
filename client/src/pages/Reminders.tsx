@@ -3,6 +3,7 @@ import AppLayout from "@/components/AppLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { firestoreService, ReminderConfig } from "@/hooks/useFirebaseFirestore";
 import { useRecurringReminders } from "@/hooks/useLocalNotifications";
+import { geminiService } from "@/lib/gemini";
 import {
   Bell,
   Droplets,
@@ -26,6 +27,8 @@ import {
   Sparkles,
   BellOff,
   BellRing,
+  X,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -144,12 +147,17 @@ function NotificationPermissionBanner() {
 // ─── Componente principal ──────────────────────────────────────────────────────
 
 export default function Reminders() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [reminders, setReminders] = useState<ReminderConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedReminder, setSelectedReminder] = useState<ReminderConfig | null>(null);
   const [isConfiguring, setIsConfiguring] = useState(false);
   const [selectedProfile, setSelectedProfile] = useState<"basic" | "fitness">("basic");
+  const [aiSuggestion, setAiSuggestion] = useState<string>("");
+  const [aiDetailedPlan, setAiDetailedPlan] = useState<string>("");
+  const [loadingAI, setLoadingAI] = useState(false);
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const aiLoadedRef = useRef(false);
   const initialLoadDone = useRef(false);
   const hasScheduledOnOpen = useRef(false);
   const { scheduleNextReminder, rescheduleOnAppOpen } = useRecurringReminders();
@@ -222,6 +230,38 @@ export default function Reminders() {
         });
     }
   }, [reminders, rescheduleOnAppOpen]);
+
+  // ── Gerar sugestão da IA com o perfil real ────────────────────────────────
+  useEffect(() => {
+    if (!profile || aiLoadedRef.current) return;
+    aiLoadedRef.current = true;
+    setLoadingAI(true);
+    geminiService.generateReminderSuggestion({
+      name: profile.name,
+      age: profile.age,
+      sex: profile.sex,
+      heightCm: profile.heightCm,
+      weightKg: profile.weightKg,
+      goal: profile.goal,
+      experienceLevel: profile.experienceLevel,
+      daysPerWeek: profile.daysPerWeek,
+      minutesPerSession: profile.minutesPerSession,
+      gymType: profile.gymType,
+      physicalRestrictions: profile.physicalRestrictions,
+      preferredExercises: profile.preferredExercises,
+      avoidedExercises: profile.avoidedExercises,
+    })
+      .then(({ suggestion, detailedPlan }) => {
+        setAiSuggestion(suggestion);
+        setAiDetailedPlan(detailedPlan);
+      })
+      .catch(() => {
+        setAiSuggestion(
+          `Com base no seu perfil com foco em ${profile.goal?.toLowerCase() || "seus objetivos"}, ative os lembretes mais relevantes para sua rotina esta semana.`
+        );
+      })
+      .finally(() => setLoadingAI(false));
+  }, [profile]);
 
   // ── Toggle ativo/inativo ───────────────────────────────────────────────────
   const handleToggle = async (id: string, enabled: boolean) => {
@@ -503,6 +543,7 @@ export default function Reminders() {
 
   // ── Lista de lembretes ─────────────────────────────────────────────────────
   return (
+    <>
     <AppLayout>
       <div className="max-w-2xl mx-auto p-4 pb-24">
         <div className="flex items-center gap-3 mb-8">
@@ -584,20 +625,125 @@ export default function Reminders() {
             <Sparkles className="text-indigo-600" size={20} />
             <h2 className="font-bold text-indigo-900">Sugestão da IA</h2>
           </div>
-          <p className="text-sm text-indigo-700 leading-relaxed">
-            Com base no seu perfil de{" "}
-            <span className="font-bold">
-              {selectedProfile === "basic" ? "iniciante" : "atleta"}
-            </span>
-            , recomendo ativar os lembretes de{" "}
-            <span className="font-bold">água</span> e{" "}
-            <span className="font-bold">proteína</span> para maximizar seus resultados nesta semana.
-          </p>
-          <button className="mt-4 flex items-center gap-2 text-indigo-600 font-bold text-sm hover:gap-3 transition-all">
-            Ver plano detalhado <ChevronRight size={16} />
-          </button>
+
+          {loadingAI ? (
+            <div className="flex items-center gap-3 py-2">
+              <Loader2 size={16} className="text-indigo-400 animate-spin shrink-0" />
+              <p className="text-sm text-indigo-400">Analisando seu perfil...</p>
+            </div>
+          ) : (
+            <p className="text-sm text-indigo-700 leading-relaxed">{aiSuggestion}</p>
+          )}
+
+          {!loadingAI && aiDetailedPlan && (
+            <button
+              onClick={() => setShowDetailModal(true)}
+              className="mt-4 flex items-center gap-2 text-indigo-600 font-bold text-sm active:opacity-70 transition-all"
+            >
+              Ver plano detalhado <ChevronRight size={16} />
+            </button>
+          )}
         </div>
       </div>
     </AppLayout>
+
+    {/* ── Modal plano detalhado ─────────────────────────────────────────── */}
+    {showDetailModal && (
+      <div
+        className="fixed inset-0 z-50 flex items-end justify-center"
+        onClick={() => setShowDetailModal(false)}
+      >
+        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+        <div
+          className="relative w-full max-w-lg bg-white rounded-t-3xl shadow-2xl max-h-[85vh] flex flex-col"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100">
+            <div className="flex items-center gap-3">
+              <Sparkles className="text-indigo-600" size={20} />
+              <h2 className="font-bold text-gray-900 text-lg">Plano de Lembretes</h2>
+            </div>
+            <button
+              onClick={() => setShowDetailModal(false)}
+              className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center active:bg-gray-200 transition-colors"
+            >
+              <X size={16} className="text-gray-500" />
+            </button>
+          </div>
+
+          {/* Perfil do usuário */}
+          {profile && (
+            <div className="mx-6 mt-4 bg-indigo-50 rounded-2xl px-4 py-3 flex flex-wrap gap-x-4 gap-y-1">
+              {profile.goal && (
+                <span className="text-xs text-indigo-700">
+                  🎯 <span className="font-semibold">{profile.goal}</span>
+                </span>
+              )}
+              {profile.experienceLevel && (
+                <span className="text-xs text-indigo-700">
+                  📊 <span className="font-semibold">{profile.experienceLevel}</span>
+                </span>
+              )}
+              {profile.daysPerWeek && (
+                <span className="text-xs text-indigo-700">
+                  📅 <span className="font-semibold">{profile.daysPerWeek}x/semana</span>
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Conteúdo em Markdown renderizado como texto */}
+          <div className="overflow-y-auto px-6 py-4 flex-1">
+            <div className="text-sm text-gray-700 leading-relaxed space-y-3">
+              {aiDetailedPlan.split("\n").map((line, i) => {
+                if (line.startsWith("## ")) {
+                  return (
+                    <h3 key={i} className="font-bold text-gray-900 text-base mt-4 first:mt-0">
+                      {line.replace("## ", "")}
+                    </h3>
+                  );
+                }
+                if (line.startsWith("### ")) {
+                  return (
+                    <h4 key={i} className="font-semibold text-gray-800 text-sm mt-3">
+                      {line.replace("### ", "")}
+                    </h4>
+                  );
+                }
+                if (line.startsWith("- ") || line.startsWith("* ")) {
+                  return (
+                    <div key={i} className="flex gap-2 items-start">
+                      <span className="text-indigo-500 mt-0.5 shrink-0">•</span>
+                      <span>{line.replace(/^[-*] /, "")}</span>
+                    </div>
+                  );
+                }
+                if (line.startsWith("**") && line.endsWith("**")) {
+                  return (
+                    <p key={i} className="font-semibold text-gray-800">
+                      {line.replace(/\*\*/g, "")}
+                    </p>
+                  );
+                }
+                if (line.trim() === "") return <div key={i} className="h-1" />;
+                return <p key={i}>{line.replace(/\*\*/g, "")}</p>;
+              })}
+            </div>
+          </div>
+
+          {/* Botão fechar */}
+          <div className="px-6 py-4 border-t border-gray-100">
+            <button
+              onClick={() => setShowDetailModal(false)}
+              className="w-full bg-indigo-600 text-white font-bold py-3 rounded-2xl active:bg-indigo-700 transition-colors"
+            >
+              Entendido
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

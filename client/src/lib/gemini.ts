@@ -477,6 +477,47 @@ Sua resposta deve ser SEMPRE um JSON no seguinte formato:
   },
 
   /**
+   * Gera sugestão personalizada de lembretes com base no perfil real do usuário.
+   * Retorna uma sugestão curta e um plano detalhado.
+   */
+  async generateReminderSuggestion(profile: ProfileData): Promise<{ suggestion: string; detailedPlan: string }> {
+    const nivel = profile.experienceLevel || "Iniciante";
+    const objetivo = profile.goal || "condicionamento geral";
+    const nome = profile.name || "você";
+    const diasSemana = profile.daysPerWeek || 3;
+    const restricoes = profile.physicalRestrictions || "nenhuma";
+
+    const prompt = `Você é um coach de bem-estar. Gere uma sugestão PERSONALIZADA de lembretes diários para o seguinte perfil fitness:
+
+Nome: ${nome}
+Nível: ${nivel}
+Objetivo: ${objetivo}
+Dias de treino por semana: ${diasSemana}
+Restrições físicas: ${restricoes}
+Idade: ${profile.age || "não informada"} anos
+Sexo: ${profile.sex || "não informado"}
+Peso: ${profile.weightKg || "?"}kg
+
+Responda APENAS com JSON válido nesta estrutura:
+{
+  "suggestion": "Frase curta e motivadora (2-3 frases) que mencione especificamente o objetivo '${objetivo}' e o nível '${nivel}' do usuário. Cite os 2-3 lembretes mais importantes para este perfil.",
+  "detailedPlan": "Plano detalhado em Markdown com seções. Use ## para títulos e - para listas. Inclua: 1) Análise do perfil (objetivo + nível), 2) Lembretes prioritários para este perfil (quais ativar e por quê), 3) Horários ideais recomendados para cada lembrete, 4) Dicas específicas para atingir o objetivo '${objetivo}'. Seja específico e personalizado, não genérico."
+}`;
+
+    const text = await callGemini(
+      [{ role: "user", parts: [{ text: prompt }] }],
+      "Você é um coach fitness especializado em rotinas personalizadas. Responda em português do Brasil.",
+      true
+    );
+
+    const parsed = extractJson(text);
+    return {
+      suggestion: parsed.suggestion || `Com base no seu perfil de ${nivel.toLowerCase()} com foco em ${objetivo.toLowerCase()}, recomendo ativar os lembretes mais alinhados ao seu objetivo esta semana.`,
+      detailedPlan: parsed.detailedPlan || "Carregando plano personalizado...",
+    };
+  },
+
+  /**
    * Gera recomendações nutricionais personalizadas com base no perfil.
    */
   async generateNutritionRecommendation(profile: ProfileData): Promise<string> {
