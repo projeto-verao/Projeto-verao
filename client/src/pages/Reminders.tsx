@@ -157,7 +157,6 @@ export default function Reminders() {
   const [aiDetailedPlan, setAiDetailedPlan] = useState<string>("");
   const [loadingAI, setLoadingAI] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
-  const aiLoadedRef = useRef(false);
   const initialLoadDone = useRef(false);
   const hasScheduledOnOpen = useRef(false);
   const { scheduleNextReminder, rescheduleOnAppOpen } = useRecurringReminders();
@@ -231,37 +230,57 @@ export default function Reminders() {
     }
   }, [reminders, rescheduleOnAppOpen]);
 
-  // ── Gerar sugestão da IA com o perfil real ────────────────────────────────
+  // ── Sugestão da IA: carrega do cache (Firestore) ou gera uma vez ──────────
   useEffect(() => {
-    if (!profile || aiLoadedRef.current) return;
-    aiLoadedRef.current = true;
-    setLoadingAI(true);
-    geminiService.generateReminderSuggestion({
-      name: profile.name,
-      age: profile.age,
-      sex: profile.sex,
-      heightCm: profile.heightCm,
-      weightKg: profile.weightKg,
-      goal: profile.goal,
-      experienceLevel: profile.experienceLevel,
-      daysPerWeek: profile.daysPerWeek,
-      minutesPerSession: profile.minutesPerSession,
-      gymType: profile.gymType,
-      physicalRestrictions: profile.physicalRestrictions,
-      preferredExercises: profile.preferredExercises,
-      avoidedExercises: profile.avoidedExercises,
-    })
-      .then(({ suggestion, detailedPlan }) => {
+    if (!user || !profile) return;
+
+    const loadOrGenerate = async () => {
+      setLoadingAI(true);
+      try {
+        // 1. Tenta carregar do cache no Firestore
+        const cached = await firestoreService.getReminderAiSuggestion(user.uid);
+
+        if (cached && cached.suggestion && cached.detailedPlan) {
+          // Cache válido → usa sem chamar a IA
+          setAiSuggestion(cached.suggestion);
+          setAiDetailedPlan(cached.detailedPlan);
+          return;
+        }
+
+        // 2. Sem cache (primeira vez ou após nova evolução) → chama Gemini
+        const { suggestion, detailedPlan } = await geminiService.generateReminderSuggestion({
+          name: profile.name,
+          age: profile.age,
+          sex: profile.sex,
+          heightCm: profile.heightCm,
+          weightKg: profile.weightKg,
+          goal: profile.goal,
+          experienceLevel: profile.experienceLevel,
+          daysPerWeek: profile.daysPerWeek,
+          minutesPerSession: profile.minutesPerSession,
+          gymType: profile.gymType,
+          physicalRestrictions: profile.physicalRestrictions,
+          preferredExercises: profile.preferredExercises,
+          avoidedExercises: profile.avoidedExercises,
+        });
+
         setAiSuggestion(suggestion);
         setAiDetailedPlan(detailedPlan);
-      })
-      .catch(() => {
+
+        // 3. Salva no Firestore para próximas visitas
+        await firestoreService.saveReminderAiSuggestion(user.uid, suggestion, detailedPlan);
+      } catch {
         setAiSuggestion(
           `Com base no seu perfil com foco em ${profile.goal?.toLowerCase() || "seus objetivos"}, ative os lembretes mais relevantes para sua rotina esta semana.`
         );
-      })
-      .finally(() => setLoadingAI(false));
-  }, [profile]);
+      } finally {
+        setLoadingAI(false);
+      }
+    };
+
+    loadOrGenerate();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.uid, profile?.goal, profile?.experienceLevel]);
 
   // ── Toggle ativo/inativo ───────────────────────────────────────────────────
   const handleToggle = async (id: string, enabled: boolean) => {

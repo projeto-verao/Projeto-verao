@@ -602,6 +602,29 @@ export const firestoreService = {
       .map((d) => d.data() as { amountMl: number; createdAt: Timestamp });
   },
 
+  // ── Reminder AI suggestion ────────────────────────────────────────────────
+
+  async getReminderAiSuggestion(userId: string): Promise<{ suggestion: string; detailedPlan: string; updatedAt: Timestamp } | null> {
+    const snap = await getDoc(doc(db, "users", userId, "meta", "reminderAiSuggestion"));
+    return snap.exists() ? (snap.data() as { suggestion: string; detailedPlan: string; updatedAt: Timestamp }) : null;
+  },
+
+  async saveReminderAiSuggestion(userId: string, suggestion: string, detailedPlan: string) {
+    await setDoc(
+      doc(db, "users", userId, "meta", "reminderAiSuggestion"),
+      { suggestion, detailedPlan, updatedAt: Timestamp.now() },
+      { merge: true }
+    );
+  },
+
+  async clearReminderAiSuggestion(userId: string) {
+    await setDoc(
+      doc(db, "users", userId, "meta", "reminderAiSuggestion"),
+      { suggestion: null, detailedPlan: null, updatedAt: Timestamp.now() },
+      { merge: true }
+    );
+  },
+
   // ── Nutrition recommendation ───────────────────────────────────────────────
 
   async saveNutritionRecommendation(userId: string, content: string) {

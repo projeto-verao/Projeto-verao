@@ -294,6 +294,10 @@ export default function IATrainer() {
         thighCm: parseFloat(measurements.thighCm) || undefined,
         notes: "Evolução registrada manualmente."
       });
+
+      // Invalida o cache da sugestão IA dos Lembretes para que seja
+      // regenerada com os dados mais recentes na próxima visita
+      firestoreService.clearReminderAiSuggestion(user.uid).catch(() => {});
       
       // Limpar campos após salvar
       setMeasurements({
