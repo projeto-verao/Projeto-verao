@@ -921,13 +921,12 @@ export default function Dashboard() {
               <span className="text-orange-500 font-black text-xl">{completedDaysSet.size}/{days.length}</span>
             </div>
 
-            {/* Sequência compacta A-B-C-D com indicadores ✓/○ — baseado nos dias concluídos */}
-            <div className="flex items-center gap-3 mb-2">
-              {days.slice(0, 4).map((day, index) => {
-                const letters = ['A', 'B', 'C', 'D'];
-                const letter = letters[index] || `${day.dayNumber}`;
+            {/* Sequência compacta A-B-C-... com indicadores ✓/○ — suporta qualquer número de dias */}
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-2">
+              {days.map((day, index) => {
+                const letter = String.fromCharCode(65 + index); // A, B, C, D, E, F, G…
                 const isCompleted = completedDaysSet.has(day.dayNumber);
-                const isNextPending = !completedDaysSet.has(day.dayNumber) && days.slice(0, day.dayNumber).every(d => completedDaysSet.has(d.dayNumber));
+                const isNextPending = !completedDaysSet.has(day.dayNumber) && days.slice(0, index).every(d => completedDaysSet.has(d.dayNumber));
                 return (
                   <div key={day.dayNumber} className="flex items-center gap-1.5">
                     <span className={`text-sm font-black transition-colors ${isCompleted ? 'text-green-400' : isNextPending ? 'text-orange-400' : 'text-white/30'}`}>
@@ -943,14 +942,12 @@ export default function Dashboard() {
 
             <p className="text-[10px] text-white/40 font-medium">
               {(() => {
-                const allDays = days.map(d => d.dayNumber);
-                const allCompleted = allDays.every(d => completedDaysSet.has(d));
+                const allCompleted = days.every(d => completedDaysSet.has(d.dayNumber));
                 if (allCompleted) return "Ciclo completo! Novo ciclo iniciado. 🎉";
-                const pending = allDays.filter(d => !completedDaysSet.has(d));
-                if (pending.length === 0) return "Inicie seu treino para começar o ciclo!";
-                const firstPending = pending.sort((a, b) => a - b)[0];
-                const letters = ['A', 'B', 'C', 'D'];
-                return `Próximo: ${letters[firstPending - 1] || 'Dia ' + firstPending}`;
+                const firstPendingIndex = days.findIndex(d => !completedDaysSet.has(d.dayNumber));
+                if (firstPendingIndex === -1) return "Inicie seu treino para começar o ciclo!";
+                const letter = String.fromCharCode(65 + firstPendingIndex);
+                return `Próximo: ${letter}`;
               })()}
             </p>
           </div>
