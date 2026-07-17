@@ -1,6 +1,11 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  memoryLocalCache,
+} from "firebase/firestore";
 // import { getStorage } from "firebase/storage"; // Removido: migrado para Cloudinary
 import { getMessaging } from "firebase/messaging";
 
@@ -19,12 +24,40 @@ const app = initializeApp(firebaseConfig);
 // Initialize Firebase services
 export const auth = getAuth(app);
 
-// Initialize Firestore with offline persistence (Firebase 10+)
-export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager(),
-  }),
-});
+// Initialize Firestore com persistência offline.
+// persistentMultipleTabManager() pode falhar em alguns ambientes móveis
+// (modo privado, PWA restrito, IndexedDB bloqueado, Android antigo).
+// Se falhar, usa memoryLocalCache como fallback seguro para garantir
+// que o cadastro e login funcionem em qualquer dispositivo.
+function initDb() {
+  try {
+    return initializeFirestore(app, {
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager(),
+      }),
+    });
+  } catch (e) {
+    console.warn(
+      "[Firebase] Persistência multi-tab indisponível, usando cache em memória:",
+      e
+    );
+    try {
+      return initializeFirestore(app, {
+        localCache: persistentLocalCache(),
+      });
+    } catch (e2) {
+      console.warn(
+        "[Firebase] Persistência local indisponível, usando cache em memória:",
+        e2
+      );
+      return initializeFirestore(app, {
+        localCache: memoryLocalCache(),
+      });
+    }
+  }
+}
+
+export const db = initDb();
 
 // export const storage = getStorage(app); // Removido: migrado para Cloudinary
 

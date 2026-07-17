@@ -230,6 +230,35 @@ export default function Reminders() {
     }
   }, [reminders, rescheduleOnAppOpen]);
 
+  // ── Reagendar automaticamente após cada disparo (lembretes recorrentes) ───
+  // Causa raiz do bug 'every_x_hours não funciona': o SW dispara a notificação
+  // via setTimeout mas não agenda a próxima. O cliente precisa reagendar ao
+  // receber NOTIFICATION_DELIVERED. Sem isso, apenas a 1ª ocorrência dispara.
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+
+    const handleSwMessage = (event: MessageEvent) => {
+      if (event.data?.type !== 'NOTIFICATION_DELIVERED') return;
+      const reminderId: string | undefined = event.data.reminderId;
+      if (!reminderId) return;
+
+      // Encontra o lembrete pelo id e reagenda a próxima ocorrência
+      setReminders((current) => {
+        const reminder = current.find((r) => r.id === reminderId);
+        if (reminder && reminder.enabled) {
+          console.log('[Reminders] Reagendando "' + reminder.title + '" após disparo');
+          scheduleNextReminder(reminder).catch((err) =>
+            console.warn('[Reminders] Erro ao reagendar após disparo:', err)
+          );
+        }
+        return current; // estado não muda, apenas efeito colateral
+      });
+    };
+
+    navigator.serviceWorker.addEventListener('message', handleSwMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', handleSwMessage);
+  }, [scheduleNextReminder]);
+
   // ── Sugestão da IA: carrega do cache (Firestore) ou gera uma vez ──────────
   useEffect(() => {
     if (!user || !profile) return;
