@@ -554,7 +554,7 @@ export default function Dashboard() {
       .map(([muscle]) => muscle);
 
     try {
-      // Registrar conclusão no Firestore
+      // Registrar conclusão no Firestore (operação principal — obrigatória)
       await firestoreService.addWorkoutCompletion(user.uid, {
         workoutId: activeWorkout.id,
         day: dayNumber,
@@ -567,9 +567,10 @@ export default function Dashboard() {
         exerciseLoads: loads
       });
 
-      // Persistir cargas individuais na coleção dedicada (garante que o próximo
-      // treino abra com os valores corretos mesmo sem nova completion)
-      await firestoreService.saveAllExerciseWeights(user.uid, loads);
+      // Persistir cargas individuais — secundário, não bloqueia o modal de conclusão
+      firestoreService.saveAllExerciseWeights(user.uid, loads).catch(err => {
+        console.warn("[Dashboard] saveAllExerciseWeights falhou (não crítico):", err);
+      });
 
       // Limpar estado do cronômetro
       setIsTraining(false);

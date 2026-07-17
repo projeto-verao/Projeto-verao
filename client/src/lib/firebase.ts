@@ -3,6 +3,7 @@ import { getAuth } from "firebase/auth";
 import {
   initializeFirestore,
   persistentLocalCache,
+  persistentMultipleTabManager,
   memoryLocalCache,
 } from "firebase/firestore";
 // import { getStorage } from "firebase/storage"; // Removido: migrado para Cloudinary
@@ -23,30 +24,40 @@ const app = initializeApp(firebaseConfig);
 // Initialize Firebase services
 export const auth = getAuth(app);
 
-// Initialize Firestore com persistência offline (single-tab).
+// Initialize Firestore com persistência offline e fallbacks progressivos.
 //
-// Por que NÃO usamos persistentMultipleTabManager():
-// O PWA instalado roda em processo isolado do Chrome (standalone mode).
-// A coordenação multi-tab via IndexedDB locking pode falhar nesse contexto,
-// causando erro assíncrono na primeira operação Firestore (ex: setDoc no
-// cadastro) mesmo quando initializeFirestore() não lança exceção síncrona.
+// Nível 1 — persistentMultipleTabManager(): coordena múltiplas abas via
+// IndexedDB. Funciona no Chrome normal e resolve a falha de escrita que
+// ocorria quando o single-tab manager não conseguia adquirir o lock após
+// uma sessão anterior ter usado o multi-tab.
 //
-// persistentLocalCache() sem tabManager usa single-tab manager por padrão,
-// que é mais compatível e adequado para PWA (sempre uma única janela).
-// Fallback: memoryLocalCache() para ambientes sem IndexedDB (modo privado, etc).
+// Nível 2 — persistentLocalCache() sem tabManager: single-tab, usado em
+// contextos onde o multi-tab falha (ex: alguns browsers móveis restritos).
+//
+// Nível 3 — memoryLocalCache(): sem persistência (modo privado / sem IndexedDB).
+//
+// Nota PWA: o problema de cadastro no PWA (standalone mode) estava no
+// window.location.reload() do controllerchange — já corrigido em main.tsx
+// com reload inteligente. O multi-tab manager é seguro para PWA.
 function initDb() {
   try {
     return initializeFirestore(app, {
-      localCache: persistentLocalCache(),
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager(),
+      }),
     });
-  } catch (e) {
-    console.warn(
-      "[Firebase] Persistência IndexedDB indisponível, usando cache em memória:",
-      e
-    );
-    return initializeFirestore(app, {
-      localCache: memoryLocalCache(),
-    });
+  } catch {
+    try {
+      console.warn("[Firebase] Multi-tab IndedxedDB indisponível, tentando single-tab...");
+      return initializeFirestore(app, {
+        localCache: persistentLocalCache(),
+      });
+    } catch (e) {
+      console.warn("[Firebase] Persistência IndexedDB indisponível, usando cache em memória:", e);
+      return initializeFirestore(app, {
+        localCache: memoryLocalCache(),
+      });
+    }
   }
 }
 
