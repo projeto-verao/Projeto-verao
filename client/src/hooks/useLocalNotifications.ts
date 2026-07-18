@@ -162,6 +162,28 @@ export function useRecurringReminders() {
     // Cancelar agendamento anterior
     await cancelNotification(reminder.id);
 
+    // Para "a cada X horas": agendamos TODOS os slots restantes da janela do
+    // próximo dia válido de uma só vez. O SW mantém um timer independente por
+    // slot (chave notif_{id}_{timestamp}), de modo que todos os horários do
+    // dia disparam sem precisar reabrir o app entre eles.
+    // CANCEL_NOTIFICATION cancela todos pelo prefixo — sem mudanças no sw.js.
+    if (reminder.repetitionType === "every_x_hours") {
+      const delays = calculateSlotsEveryXHours(reminder);
+      if (delays.length === 0) return false;
+      let scheduled = 0;
+      for (const delayMs of delays) {
+        const ok = await scheduleNotification({
+          reminderId: reminder.id,
+          title: reminder.title,
+          body: reminder.description,
+          delayMs,
+        });
+        if (ok) scheduled++;
+      }
+      return scheduled > 0;
+    }
+
+    // once_a_day (e legados normalizados): agendar a próxima ocorrência
     const delayMs = calculateNextDelivery(reminder);
     if (delayMs <= 0) return false;
 
@@ -306,4 +328,73 @@ function calculateNextDelivery(reminder: {
     default:
       return -1;
   }
+}
+
+/**
+ * Calcula TODOS os delays (em ms a partir de agora) para os slots restantes
+ * de um lembrete "a cada X horas" dentro da janela do próximo dia válido.
+ *
+ * Retorna um array com um delay por slot futuro. Exemplo: para "a cada 2h
+ * das 08:00 às 22:00", chamado às 09:00, retorna delays para 10h, 12h,
+ * 14h, 16h, 18h, 20h e 22h — todos agendados de uma vez no SW.
+ *
+ * Se a janela de hoje já fechou, retorna os slots do próximo dia válido.
+ * Se nenhum dia válido for encontrado em 7 dias, retorna [].
+ */
+function calculateSlotsEveryXHours(reminder: {
+  timeStart?: string;
+  time?: string;
+  timeEnd?: string;
+  intervalHours?: number;
+  daysOfWeek?: number[];
+}): number[] {
+  const now = new Date();
+  const effectiveDays =
+    reminder.daysOfWeek && reminder.daysOfWeek.length > 0
+      ? reminder.daysOfWeek
+      : [0, 1, 2, 3, 4, 5, 6];
+
+  const intervalMs = (reminder.intervalHours || 2) * 60 * 60 * 1000;
+  const [startH, startM] = (reminder.timeStart || reminder.time || "08:00")
+    .split(":")
+    .map(Number);
+  const [endH, endM] = (reminder.timeEnd || "22:00").split(":").map(Number);
+
+  for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
+    const checkDay = new Date(now);
+    checkDay.setDate(now.getDate() + dayOffset);
+
+    if (!effectiveDays.includes(checkDay.getDay())) continue;
+
+    const dayStart = new Date(checkDay);
+    dayStart.setHours(startH, startM, 0, 0);
+    const dayEnd = new Date(checkDay);
+    dayEnd.setHours(endH, endM, 0, 0);
+
+    // Janela de hoje já fechou — tentar próximo dia válido
+    if (dayOffset === 0 && now >= dayEnd) continue;
+
+    // Determinar o primeiro slot futuro dentro da janela
+    let slotTime: Date;
+    if (now < dayStart) {
+      slotTime = new Date(dayStart);
+    } else {
+      // Já estamos dentro da janela: avançar ao próximo múltiplo do intervalo
+      const elapsedMs = now.getTime() - dayStart.getTime();
+      const slotsElapsed = Math.ceil(elapsedMs / intervalMs);
+      slotTime = new Date(dayStart.getTime() + slotsElapsed * intervalMs);
+    }
+
+    const delays: number[] = [];
+    while (slotTime <= dayEnd) {
+      if (slotTime > now) {
+        delays.push(slotTime.getTime() - now.getTime());
+      }
+      slotTime = new Date(slotTime.getTime() + intervalMs);
+    }
+
+    if (delays.length > 0) return delays;
+  }
+
+  return [];
 }
