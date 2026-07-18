@@ -190,6 +190,13 @@ self.addEventListener('message', (event) => {
       break;
     }
 
+    case 'SKIP_WAITING': {
+      // Força este SW a ativar imediatamente, descartando a fase de espera.
+      // Chamado pelo cliente quando detecta um SW em estado 'waiting'.
+      self.skipWaiting();
+      break;
+    }
+
     case 'CANCEL_NOTIFICATION': {
       const { reminderId } = payload;
       for (const [key, timer] of activeTimers) {

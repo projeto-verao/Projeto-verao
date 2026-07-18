@@ -52,7 +52,7 @@ export function useLocalNotifications() {
   // Obter o service worker registration
   useEffect(() => {
     const init = async () => {
-      if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
+      if ("serviceWorker" in navigator) {
         swRef.current = await navigator.serviceWorker.ready;
       }
     };

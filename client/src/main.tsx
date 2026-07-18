@@ -171,6 +171,29 @@ if ('serviceWorker' in navigator) {
       const registration = await navigator.serviceWorker.register('/sw.js');
       console.log('SW registered: ', registration);
 
+      // ─── Forçar ativação de SW em waiting (Fix: aba 'Teses' / versão antiga) ─
+      // Se há um novo SW em estado 'waiting', envia SKIP_WAITING para que ele
+      // assuma imediatamente o controle. Sem isso, o SW antigo continua servindo
+      // conteúdo cacheado (que em alguns dispositivos mostrava 'Teses' em vez de
+      // 'Lembretes') até que o usuário feche todas as abas do app.
+      function activateWaiting(reg: ServiceWorkerRegistration) {
+        if (reg.waiting) {
+          console.log('[SW] SW em waiting detectado — forçando skipWaiting...');
+          reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+        }
+      }
+      activateWaiting(registration);
+      registration.addEventListener('updatefound', () => {
+        const newWorker = registration.installing;
+        if (!newWorker) return;
+        newWorker.addEventListener('statechange', () => {
+          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            console.log('[SW] Novo SW instalado em waiting — forçando skipWaiting...');
+            newWorker.postMessage({ type: 'SKIP_WAITING' });
+          }
+        });
+      });
+
       // Registrar FCM token
       registerFcmToken();
 
