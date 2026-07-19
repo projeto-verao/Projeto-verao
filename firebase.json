@@ -32,6 +32,10 @@
           {
             "key": "Expires",
             "value": "0"
+          },
+          {
+            "key": "Content-Language",
+            "value": "pt-BR"
           }
         ]
       }
