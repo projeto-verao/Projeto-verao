@@ -2,6 +2,7 @@
   "name": "Projeto Verão",
   "short_name": "Projeto Verão",
   "description": "Seu personal trainer com IA",
+  "lang": "pt-BR",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
