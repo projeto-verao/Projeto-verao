@@ -161,20 +161,35 @@ self.addEventListener('message', (event) => {
       const timerId = `notif_${reminderId}_${Date.now()}`;
       
       const timer = setTimeout(async () => {
-        await self.registration.showNotification(title, {
-          body: body || '',
-          icon: '/icons/icon-192x192.png',
-          badge: '/icons/icon-72x72.png',
-          vibrate: [100, 50, 100],
-          tag: reminderId,
-          data: { url: '/', reminderId: reminderId, type: 'local' }
-        });
+        // Remover timer da lista SEMPRE, mesmo que showNotification falhe.
+        // Isso garante que activeTimers não acumule entradas obsoletas.
         activeTimers.delete(timerId);
+
+        // CORREÇÃO BUG 2: try/catch em showNotification — antes, qualquer erro
+        // aqui (permissão revogada, modo privado, etc.) era perdido silenciosamente.
+        try {
+          await self.registration.showNotification(title, {
+            body: body || '',
+            icon: '/icons/icon-192x192.png',
+            badge: '/icons/icon-72x72.png',
+            vibrate: [100, 50, 100],
+            tag: reminderId,
+            data: { url: '/', reminderId: reminderId, type: 'local' }
+          });
+          logDebug('Notificação local exibida com sucesso', { reminderId, title });
+        } catch (err) {
+          console.error('[SW] Erro ao exibir showNotification:', { reminderId, title, error: String(err) });
+        }
         
-        // Notificar cliente que a notificação foi disparada
-        const clientList = await clients.matchAll({ type: 'window' });
-        for (const client of clientList) {
-          client.postMessage({ type: 'NOTIFICATION_DELIVERED', reminderId, timestamp: Date.now() });
+        // Notificar cliente que a notificação foi processada (sucesso ou falha).
+        // O cliente usa este evento para reagendar a próxima ocorrência.
+        try {
+          const clientList = await clients.matchAll({ type: 'window' });
+          for (const client of clientList) {
+            client.postMessage({ type: 'NOTIFICATION_DELIVERED', reminderId, timestamp: Date.now() });
+          }
+        } catch (err) {
+          console.error('[SW] Erro ao notificar clientes após disparo:', { reminderId, error: String(err) });
         }
       }, delayMs);
 

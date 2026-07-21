@@ -4,7 +4,9 @@ import { ThemeProvider } from "@/contexts/ThemeContext";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { useAuth } from "@/contexts/AuthContext";
 import { isOnboardingComplete } from "@/hooks/useFirebaseAuth";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { firestoreService, ReminderConfig } from "@/hooks/useFirebaseFirestore";
+import { useRecurringReminders } from "@/hooks/useLocalNotifications";
 
 import Home from "@/pages/Home";
 import FirebaseLogin from "@/pages/FirebaseLogin";
@@ -21,7 +23,7 @@ import Reminders from "@/pages/Reminders";
 import NotFound from "@/pages/NotFound";
 import Logout from "@/pages/Logout";
 
-// Componente para Proteção de Rotas e Redirecionamento Inteligente
+// ─── Componente para Proteção de Rotas e Redirecionamento Inteligente ─────────
 function AuthGuard({ children, requireOnboarding = true }: { children: React.ReactNode, requireOnboarding?: boolean }) {
   const { isAuthenticated, loading, profile } = useAuth();
   const [, navigate] = useLocation();
@@ -44,10 +46,92 @@ function AuthGuard({ children, requireOnboarding = true }: { children: React.Rea
   return <>{children}</>;
 }
 
+// ─── Reagendamento Global de Lembretes ───────────────────────────────────────
+// CORREÇÃO BUG 3: rescheduleOnAppOpen era chamado apenas na tela /reminders.
+// Se o usuário abrisse Dashboard, Treinos, IA ou qualquer outra tela, os
+// lembretes não eram reagendados após o Service Worker ser encerrado pelo Android.
+//
+// Este componente garante que o reagendamento ocorra sempre que o usuário
+// estiver autenticado, independentemente de qual tela está aberta.
+// Também registra o listener global de NOTIFICATION_DELIVERED, resolvendo
+// o BUG 5 (apenas a tela Lembretes recebia o evento e reagendava).
+function GlobalReminderScheduler() {
+  const { user, isAuthenticated } = useAuth();
+  const { scheduleNextReminder, rescheduleOnAppOpen } = useRecurringReminders();
+  const hasScheduledRef = useRef(false);
+
+  // Reagendar ao autenticar — uma vez por sessão, qualquer que seja a tela inicial
+  useEffect(() => {
+    if (!isAuthenticated || !user || hasScheduledRef.current) return;
+    if (!('serviceWorker' in navigator)) return;
+
+    hasScheduledRef.current = true;
+
+    firestoreService.getReminderConfigs(user.uid)
+      .then((reminders: ReminderConfig[]) => {
+        const active = reminders.filter((r) => r.enabled);
+        if (active.length === 0) return Promise.resolve(0);
+        return rescheduleOnAppOpen(active);
+      })
+      .then((count) => {
+        if (typeof count === 'number' && count > 0) {
+          console.log(`[GlobalScheduler] ${count} lembrete(s) reagendado(s) ao abrir o app`);
+        }
+      })
+      .catch((err) => {
+        console.warn('[GlobalScheduler] Erro ao reagendar lembretes na abertura:', err);
+        // Permite nova tentativa se houver erro (ex: SW ainda não pronto)
+        hasScheduledRef.current = false;
+      });
+  }, [isAuthenticated, user, rescheduleOnAppOpen]);
+
+  // Resetar guard ao fazer logout — permite reagendamento no próximo login
+  useEffect(() => {
+    if (!isAuthenticated) {
+      hasScheduledRef.current = false;
+    }
+  }, [isAuthenticated]);
+
+  // Listener global de NOTIFICATION_DELIVERED — reagenda após cada disparo.
+  // CORREÇÃO BUG 5: antes, este listener existia apenas em Reminders.tsx,
+  // então lembretes once_a_day só eram reagendados se o usuário estivesse
+  // nessa tela quando a notificação disparasse.
+  useEffect(() => {
+    if (!isAuthenticated || !user || !('serviceWorker' in navigator)) return;
+
+    const handleSwMessage = (event: MessageEvent) => {
+      if (event.data?.type !== 'NOTIFICATION_DELIVERED') return;
+      const reminderId: string | undefined = event.data.reminderId;
+      if (!reminderId) return;
+
+      // Buscar o lembrete no Firestore para garantir dados atualizados
+      firestoreService.getReminderConfigs(user.uid)
+        .then((reminders: ReminderConfig[]) => {
+          const reminder = reminders.find((r) => r.id === reminderId);
+          if (reminder && reminder.enabled) {
+            console.log(`[GlobalScheduler] Reagendando "${reminder.title}" após disparo`);
+            return scheduleNextReminder(reminder);
+          }
+        })
+        .catch((err) => {
+          console.warn('[GlobalScheduler] Erro ao reagendar após disparo:', err);
+        });
+    };
+
+    navigator.serviceWorker.addEventListener('message', handleSwMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', handleSwMessage);
+  }, [isAuthenticated, user, scheduleNextReminder]);
+
+  // Componente invisível — apenas lógica, sem elementos renderizados
+  return null;
+}
+
 export default function App() {
   return (
     <ThemeProvider defaultTheme="light">
       <ErrorBoundary>
+        {/* Reagendamento global: ativo independente da rota atual */}
+        <GlobalReminderScheduler />
         <Switch>
           <Route path="/" component={Home} />
           <Route path="/login" component={FirebaseLogin} />

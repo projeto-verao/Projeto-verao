@@ -78,21 +78,44 @@ export function useLocalNotifications() {
   }, []);
 
   // Agendar notificação
+  // CORREÇÃO BUG 1: verificar sw.active explicitamente (evita false success)
+  // CORREÇÃO BUG 4: aguardar serviceWorker.ready se swRef ainda não foi preenchido (evita race condition)
   const scheduleNotification = useCallback(async (notification: ScheduledNotification): Promise<boolean> => {
+    // Se swRef ainda não foi preenchido pelo useEffect, aguardar o SW diretamente.
+    // Isso resolve a race condition onde scheduleNotification é chamado antes do
+    // useEffect completar o await navigator.serviceWorker.ready.
+    if (!swRef.current) {
+      if (!("serviceWorker" in navigator)) {
+        console.warn("[Notifications] Service Worker não suportado neste navegador");
+        return false;
+      }
+      try {
+        swRef.current = await navigator.serviceWorker.ready;
+      } catch (err) {
+        console.warn("[Notifications] Falha ao aguardar Service Worker:", err);
+        return false;
+      }
+    }
+
     const sw = swRef.current;
-    if (!sw) {
-      console.warn("[Notifications] Service Worker não disponível");
+
+    // Verificar explicitamente sw.active — o optional chaining (?.) silenciava falhas:
+    // se sw.active fosse null, a mensagem não era enviada mas a função retornava true.
+    if (!sw.active) {
+      console.warn(
+        `[Notifications] sw.active é null — SW não está ativo. Mensagem NÃO enviada para: ${notification.reminderId}`
+      );
       return false;
     }
 
     try {
-      sw.active?.postMessage({
+      sw.active.postMessage({
         type: "SCHEDULE_NOTIFICATION",
         ...notification
       });
       return true;
     } catch (err) {
-      console.error("[Notifications] Erro ao agendar:", err);
+      console.error("[Notifications] Erro ao enviar mensagem ao SW:", err);
       return false;
     }
   }, []);
